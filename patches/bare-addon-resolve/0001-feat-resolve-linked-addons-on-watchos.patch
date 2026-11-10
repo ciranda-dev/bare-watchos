@@ -1,0 +1,70 @@
+From dfec043d267f0396daec87bff58d88a18ef8895c Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 13:57:27 +0700
+Subject: [PATCH] feat: resolve linked addons on `watchos`
+
+---
+ README.md |  2 +-
+ index.js  |  2 +-
+ test.js   | 22 ++++++++++++++++++++++
+ 3 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/README.md b/README.md
+index 0928109..7a1ab0a 100644
+--- a/README.md
++++ b/README.md
+@@ -213,7 +213,7 @@ Each host is resolved for in the closest scope that has a prebuild for it, and i
+     2.  If `platform` is the empty string, continue.
+     3.  Append `platform` to `options.matchedConditions`.
+     4.  Let `candidates` be the following artefact names, in order, where each entry containing `<version>` is only included when `version` is not `null`:
+-        1.  If `platform` is `darwin` or `ios`:
++        1.  If `platform` is `darwin`, `ios`, or `watchos`:
+             1.  `<name>.<version>.framework/<name>.<version>`
+             2.  `lib<name>.<version>.dylib`, only if `platform` is `darwin`
+             3.  `<name>.framework/<name>`
+diff --git a/index.js b/index.js
+index 56f4b93..167c1d9 100644
+--- a/index.js
++++ b/index.js
+@@ -442,7 +442,7 @@ exports.linked = function* (name, version = null, opts = {}) {
+ function* platformArtefact(name, version = null, platform, opts = {}) {
+   const { linkedProtocol = 'linked:' } = opts
+ 
+-  if (platform === 'darwin' || platform === 'ios') {
++  if (platform === 'darwin' || platform === 'ios' || platform === 'watchos') {
+     if (version !== null) {
+       if (
+         yield {
+diff --git a/test.js b/test.js
+index 0688e77..106405d 100644
+--- a/test.js
++++ b/test.js
+@@ -1651,6 +1651,28 @@ test('linked module, ios', (t) => {
+   t.alike(result, ['linked:e.1.2.3.framework/e.1.2.3', 'linked:e.framework/e'])
+ })
+ 
++test('linked module, watchos', (t) => {
++  function readPackage(url) {
++    if (url.href === 'file:///a/b/package.json') {
++      return {
++        name: 'e',
++        version: '1.2.3'
++      }
++    }
++
++    return null
++  }
++
++  const host = 'watchos-arm64_32'
++  const result = []
++
++  for (const resolution of resolve('e', new URL('file:///a/b/c'), { host }, readPackage)) {
++    result.push(resolution.href)
++  }
++
++  t.alike(result, ['linked:e.1.2.3.framework/e.1.2.3', 'linked:e.framework/e'])
++})
++
+ test('linked module, linux', (t) => {
+   function readPackage(url) {
+     if (url.href === 'file:///a/b/package.json') {

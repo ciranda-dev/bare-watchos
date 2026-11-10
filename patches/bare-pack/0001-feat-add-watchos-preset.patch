@@ -1,0 +1,31 @@
+From 85604faf79d3632ab75988766d8ec6db310a6b3c Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:02:10 +0700
+Subject: [PATCH] feat: add `watchos` preset
+
+---
+ lib/preset.js         | 1 +
+ lib/preset/watchos.js | 4 ++++
+ 2 files changed, 5 insertions(+)
+ create mode 100644 lib/preset/watchos.js
+
+diff --git a/lib/preset.js b/lib/preset.js
+index baff613..abd487a 100644
+--- a/lib/preset.js
++++ b/lib/preset.js
+@@ -4,4 +4,5 @@ exports.desktop = require('./preset/desktop')
+ exports.ios = require('./preset/ios')
+ exports.linux = require('./preset/linux')
+ exports.mobile = require('./preset/mobile')
++exports.watchos = require('./preset/watchos')
+ exports.win32 = require('./preset/win32')
+diff --git a/lib/preset/watchos.js b/lib/preset/watchos.js
+new file mode 100644
+index 0000000..5635e33
+--- /dev/null
++++ b/lib/preset/watchos.js
+@@ -0,0 +1,4 @@
++module.exports = {
++  linked: true,
++  hosts: ['watchos-arm64', 'watchos-arm64-simulator', 'watchos-arm64_32']
++}

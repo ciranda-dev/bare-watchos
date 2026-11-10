@@ -1,0 +1,58 @@
+From b04644f6c6fdac0ab9e05c06fb54056471b76450 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 15:29:09 +0700
+Subject: [PATCH 2/4] fix: leave no unhandled rejection when the stream fails
+ to open
+
+---
+ lib/protocol.js |  4 ++++
+ test/stream.mjs | 21 +++++++++++++++++++++
+ 2 files changed, 25 insertions(+)
+ create mode 100644 test/stream.mjs
+
+diff --git a/lib/protocol.js b/lib/protocol.js
+index 14d9bb3..ff7597d 100644
+--- a/lib/protocol.js
++++ b/lib/protocol.js
+@@ -37,6 +37,8 @@ class Protocol extends EventEmitter {
+         .once('error', onError)
+     })
+ 
++    opening.catch(noop) // For ready() only, the stream emits the error itself
++
+     this.ready = async function ready () {
+       await opening
+     }
+@@ -214,3 +216,5 @@ function onStreamClose () {
+ 
+   if (this._failsafe) clearTimeout(this._failsafe)
+ }
++
++function noop () {}
+diff --git a/test/stream.mjs b/test/stream.mjs
+new file mode 100644
+index 0000000..3a5a420
+--- /dev/null
++++ b/test/stream.mjs
+@@ -0,0 +1,21 @@
++import test from 'brittle'
++import { Duplex } from 'streamx'
++
++import DHT from '../index.js'
++
++test('stream that fails to open', async (t) => {
++  const stream = new Duplex({
++    open (cb) {
++      cb(new Error('Could not open'))
++    }
++  })
++
++  stream.on('error', () => {})
++
++  const dht = new DHT(stream)
++
++  await new Promise((resolve) => stream.once('close', resolve))
++  await new Promise((resolve) => setImmediate(resolve))
++
++  t.ok(dht.destroyed, 'destroyed without an unhandled rejection')
++})

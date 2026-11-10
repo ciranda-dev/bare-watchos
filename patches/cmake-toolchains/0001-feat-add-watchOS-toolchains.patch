@@ -1,0 +1,213 @@
+From 69fe01210e85d0170f90f46198a07112fdc5fa2b Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 13:56:05 +0700
+Subject: [PATCH] feat: add watchOS toolchains
+
+---
+ index.js                      |  3 +++
+ test.js                       | 24 +++++++++++++++++++++---
+ test/helpers.js               |  3 +++
+ watchos-arm64-simulator.cmake | 32 ++++++++++++++++++++++++++++++++
+ watchos-arm64.cmake           | 32 ++++++++++++++++++++++++++++++++
+ watchos-arm64_32.cmake        | 32 ++++++++++++++++++++++++++++++++
+ 6 files changed, 123 insertions(+), 3 deletions(-)
+ create mode 100644 watchos-arm64-simulator.cmake
+ create mode 100644 watchos-arm64.cmake
+ create mode 100644 watchos-arm64_32.cmake
+
+diff --git a/index.js b/index.js
+index 36ca4e4..b504476 100644
+--- a/index.js
++++ b/index.js
+@@ -27,5 +27,8 @@ exports['linux-x64-musl'] = require.asset('./linux-x64-musl.cmake', __filename)
+ exports['mingw-arm64'] = require.asset('./mingw-arm64.cmake', __filename)
+ exports['mingw-x64'] = require.asset('./mingw-x64.cmake', __filename)
+ exports['wasi-wasm32'] = require.asset('./wasi-wasm32.cmake', __filename)
++exports['watchos-arm64'] = require.asset('./watchos-arm64.cmake', __filename)
++exports['watchos-arm64-simulator'] = require.asset('./watchos-arm64-simulator.cmake', __filename)
++exports['watchos-arm64_32'] = require.asset('./watchos-arm64_32.cmake', __filename)
+ exports['win32-arm64'] = require.asset('./win32-arm64.cmake', __filename)
+ exports['win32-x64'] = require.asset('./win32-x64.cmake', __filename)
+diff --git a/test.js b/test.js
+index 2cc04c0..484de7d 100644
+--- a/test.js
++++ b/test.js
+@@ -82,14 +82,26 @@ archive('test/fixtures/lto', {
+     'linux-mipsel-muslsf',
+     'linux-riscv64',
+     'linux-x64',
+-    'linux-x64-musl'
++    'linux-x64-musl',
++    'watchos-arm64',
++    'watchos-arm64-simulator',
++    'watchos-arm64_32'
+   ]
+ })
+ 
+ // Objective-C only exists on the Apple platforms.
+ for (const fixture of ['test/fixtures/objc/executable', 'test/fixtures/objcxx/executable']) {
+   compile(fixture, {
+-    targets: ['darwin-arm64', 'darwin-x64', 'ios-arm64', 'ios-arm64-simulator', 'ios-x64-simulator']
++    targets: [
++      'darwin-arm64',
++      'darwin-x64',
++      'ios-arm64',
++      'ios-arm64-simulator',
++      'ios-x64-simulator',
++      'watchos-arm64',
++      'watchos-arm64-simulator',
++      'watchos-arm64_32'
++    ]
+   })
+ }
+ 
+@@ -180,6 +192,9 @@ reconfigure('test/fixtures/c/executable', 'llvm-symbolizer', {
+     'linux-riscv64',
+     'linux-x64',
+     'linux-x64-musl',
++    'watchos-arm64',
++    'watchos-arm64-simulator',
++    'watchos-arm64_32',
+     'win32-arm64',
+     'win32-x64'
+   ]
+@@ -212,7 +227,10 @@ for (const tool of ['llvm-ar', 'llvm-ranlib']) {
+       'linux-mipsel-muslsf',
+       'linux-riscv64',
+       'linux-x64',
+-      'linux-x64-musl'
++      'linux-x64-musl',
++      'watchos-arm64',
++      'watchos-arm64-simulator',
++      'watchos-arm64_32'
+     ]
+   })
+ }
+diff --git a/test/helpers.js b/test/helpers.js
+index 43624a3..58b89b5 100644
+--- a/test/helpers.js
++++ b/test/helpers.js
+@@ -119,6 +119,9 @@ function skip(target) {
+     case 'ios-arm64':
+     case 'ios-arm64-simulator':
+     case 'ios-x64-simulator':
++    case 'watchos-arm64':
++    case 'watchos-arm64-simulator':
++    case 'watchos-arm64_32':
+       return platform !== 'darwin'
+     case 'linux-arm':
+     case 'linux-arm-musl':
+diff --git a/watchos-arm64-simulator.cmake b/watchos-arm64-simulator.cmake
+new file mode 100644
+index 0000000..9152883
+--- /dev/null
++++ b/watchos-arm64-simulator.cmake
+@@ -0,0 +1,32 @@
++set(CMAKE_SYSTEM_NAME watchOS)
++set(CMAKE_SYSTEM_PROCESSOR arm64)
++
++include("${CMAKE_CURRENT_LIST_DIR}/apple/find-clang.cmake")
++
++set(target arm64-apple-watchos8.0-simulator)
++
++set(CMAKE_C_COMPILER "${clang}")
++set(CMAKE_C_COMPILER_TARGET ${target})
++
++set(CMAKE_CXX_COMPILER "${clang++}")
++set(CMAKE_CXX_COMPILER_TARGET ${target})
++set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS "${clang-scan-deps}")
++
++set(CMAKE_ASM_COMPILER "${clang}")
++set(CMAKE_ASM_COMPILER_TARGET ${target})
++
++set(CMAKE_OBJC_COMPILER "${clang}")
++set(CMAKE_OBJC_COMPILER_TARGET ${target})
++
++set(CMAKE_OBJCXX_COMPILER "${clang++}")
++set(CMAKE_OBJCXX_COMPILER_TARGET ${target})
++
++set(CMAKE_OSX_SYSROOT watchsimulator)
++set(CMAKE_OSX_DEPLOYMENT_TARGET 8.0)
++
++set(CMAKE_POSITION_INDEPENDENT_CODE ON)
++set(CMAKE_MACOSX_BUNDLE OFF)
++
++set(VCPKG_TARGET_TRIPLET arm64-watchos-simulator)
++
++include("${CMAKE_CURRENT_LIST_DIR}/external-project/use-toolchain.cmake")
+diff --git a/watchos-arm64.cmake b/watchos-arm64.cmake
+new file mode 100644
+index 0000000..e6a168b
+--- /dev/null
++++ b/watchos-arm64.cmake
+@@ -0,0 +1,32 @@
++set(CMAKE_SYSTEM_NAME watchOS)
++set(CMAKE_SYSTEM_PROCESSOR arm64)
++
++include("${CMAKE_CURRENT_LIST_DIR}/apple/find-clang.cmake")
++
++set(target arm64-apple-watchos8.0)
++
++set(CMAKE_C_COMPILER "${clang}")
++set(CMAKE_C_COMPILER_TARGET ${target})
++
++set(CMAKE_CXX_COMPILER "${clang++}")
++set(CMAKE_CXX_COMPILER_TARGET ${target})
++set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS "${clang-scan-deps}")
++
++set(CMAKE_ASM_COMPILER "${clang}")
++set(CMAKE_ASM_COMPILER_TARGET ${target})
++
++set(CMAKE_OBJC_COMPILER "${clang}")
++set(CMAKE_OBJC_COMPILER_TARGET ${target})
++
++set(CMAKE_OBJCXX_COMPILER "${clang++}")
++set(CMAKE_OBJCXX_COMPILER_TARGET ${target})
++
++set(CMAKE_OSX_SYSROOT watchos)
++set(CMAKE_OSX_DEPLOYMENT_TARGET 8.0)
++
++set(CMAKE_POSITION_INDEPENDENT_CODE ON)
++set(CMAKE_MACOSX_BUNDLE OFF)
++
++set(VCPKG_TARGET_TRIPLET arm64-watchos)
++
++include("${CMAKE_CURRENT_LIST_DIR}/external-project/use-toolchain.cmake")
+diff --git a/watchos-arm64_32.cmake b/watchos-arm64_32.cmake
+new file mode 100644
+index 0000000..ab8304d
+--- /dev/null
++++ b/watchos-arm64_32.cmake
+@@ -0,0 +1,32 @@
++set(CMAKE_SYSTEM_NAME watchOS)
++set(CMAKE_SYSTEM_PROCESSOR arm64_32)
++
++include("${CMAKE_CURRENT_LIST_DIR}/apple/find-clang.cmake")
++
++set(target arm64_32-apple-watchos8.0)
++
++set(CMAKE_C_COMPILER "${clang}")
++set(CMAKE_C_COMPILER_TARGET ${target})
++
++set(CMAKE_CXX_COMPILER "${clang++}")
++set(CMAKE_CXX_COMPILER_TARGET ${target})
++set(CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS "${clang-scan-deps}")
++
++set(CMAKE_ASM_COMPILER "${clang}")
++set(CMAKE_ASM_COMPILER_TARGET ${target})
++
++set(CMAKE_OBJC_COMPILER "${clang}")
++set(CMAKE_OBJC_COMPILER_TARGET ${target})
++
++set(CMAKE_OBJCXX_COMPILER "${clang++}")
++set(CMAKE_OBJCXX_COMPILER_TARGET ${target})
++
++set(CMAKE_OSX_SYSROOT watchos)
++set(CMAKE_OSX_DEPLOYMENT_TARGET 8.0)
++
++set(CMAKE_POSITION_INDEPENDENT_CODE ON)
++set(CMAKE_MACOSX_BUNDLE OFF)
++
++set(VCPKG_TARGET_TRIPLET arm64_32-watchos)
++
++include("${CMAKE_CURRENT_LIST_DIR}/external-project/use-toolchain.cmake")

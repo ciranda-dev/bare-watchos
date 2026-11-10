@@ -1,0 +1,54 @@
+From 58dc49810ff3036264cee51bf363a7ffdd8a42cf Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 21:15:26 +0700
+Subject: [PATCH 4/4] fix: say a relayed node is destroyed only once it is
+
+The getter compared a boolean with null, so a relayed node read as destroyed from the start and blind-peering, which checks dht.destroyed before it connects, never reached a blind peer. A node whose stream closed is destroyed too.
+---
+ lib/node.js         |  4 +++-
+ test/connection.mjs | 13 +++++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/lib/node.js b/lib/node.js
+index c439666..a3eccf4 100644
+--- a/lib/node.js
++++ b/lib/node.js
+@@ -78,7 +78,7 @@ class Node extends EventEmitter {
+   }
+ 
+   get destroyed () {
+-    return this._destroyed !== null
++    return this._destroyed
+   }
+ 
+   connect (remotePublicKey, options = {}) {
+@@ -271,6 +271,8 @@ module.exports = {
+ }
+ 
+ function onStreamClose () {
++  this._destroyed = true
++
+   this._protocol
+     .off('listening', this._onListening)
+     .off('closed', this._onClosed)
+diff --git a/test/connection.mjs b/test/connection.mjs
+index 109dc07..293c604 100644
+--- a/test/connection.mjs
++++ b/test/connection.mjs
+@@ -142,3 +142,16 @@ test('connect to nonexisting key', (t) =>
+     await e
+   })))
+ )
++
++test('destroyed only once destroyed', (t) =>
++  withDHT((a) => withRelay(a, async (withDHT) => {
++    let relayed = null
++
++    await withDHT({ custodial: false }, async (b) => {
++      relayed = b
++      t.absent(b.destroyed, 'not before')
++    })
++
++    t.ok(relayed.destroyed, 'after')
++  }))
++)

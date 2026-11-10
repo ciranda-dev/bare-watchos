@@ -26,7 +26,10 @@
   },
   "devDependencies": {
     "bare-link": "^4.2.0",
+    "bare-make": "2.1.2",
     "bare-pack": "^3.0.2",
+    "cmake-toolchains": "2.2.2",
+    "llvm-runtime": "23.1.6-0",
     "lunte": "^1.8.0",
     "prettier": "^3.4.2",
     "prettier-config-holepunch": "^2.0.0"

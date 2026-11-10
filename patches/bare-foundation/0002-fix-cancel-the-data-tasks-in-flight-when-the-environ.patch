@@ -1,0 +1,180 @@
+From e20aea7044d432d76cd9b85e02da8ffe1349e259 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 21:55:03 +0700
+Subject: [PATCH 2/2] fix: cancel the data tasks in flight when the environment
+ goes away
+
+---
+ lib/url-session.h     | 52 ++++++++++++++++++++++++++++++++-----------
+ package.json          |  1 +
+ test.js               |  8 +++++++
+ test/fixtures/exit.js | 10 +++++++++
+ 4 files changed, 58 insertions(+), 13 deletions(-)
+ create mode 100644 test/fixtures/exit.js
+
+diff --git a/lib/url-session.h b/lib/url-session.h
+index b380d9c..239c258 100644
+--- a/lib/url-session.h
++++ b/lib/url-session.h
+@@ -11,10 +11,14 @@
+ 
+ typedef struct {
+   js_threadsafe_function_t *tsfn;
++  js_deferred_teardown_t *teardown;
+ 
++  CFTypeRef task;
+   CFTypeRef data;
+   CFTypeRef response;
+   CFTypeRef error;
++
++  bool exiting;
+ } bare_foundation_url_session__completion_t;
+ 
+ static void
+@@ -31,7 +35,7 @@ bare_foundation_url_session__on_complete(js_env_t *env, js_value_t *function, vo
+ 
+   js_value_t *argv[3];
+ 
+-  @autoreleasepool {
++  if (!completion->exiting) @autoreleasepool {
+     NSError *error = (__bridge NSError *) completion->error;
+ 
+     if (error == nil) {
+@@ -59,25 +63,41 @@ bare_foundation_url_session__on_complete(js_env_t *env, js_value_t *function, vo
+     argv[2] = bare_foundation__data(env, (__bridge NSData *) completion->data);
+   }
+ 
++  if (!completion->exiting) {
++    js_value_t *global;
++    err = js_get_global(env, &global);
++    assert(err == 0);
++
++    js_call_function(env, global, function, 3, argv, NULL);
++  }
++
++  CFRelease(completion->task);
++
+   if (completion->data) CFRelease(completion->data);
+   if (completion->response) CFRelease(completion->response);
+   if (completion->error) CFRelease(completion->error);
+ 
+-  js_threadsafe_function_t *tsfn = completion->tsfn;
++  err = js_release_threadsafe_function(completion->tsfn, js_threadsafe_function_release);
++  assert(err == 0);
+ 
+-  free(completion);
++  err = js_close_handle_scope(env, scope);
++  assert(err == 0);
+ 
+-  js_value_t *global;
+-  err = js_get_global(env, &global);
++  err = js_finish_deferred_teardown_callback(completion->teardown);
+   assert(err == 0);
+ 
+-  js_call_function(env, global, function, 3, argv, NULL);
++  free(completion);
++}
++
++// A task still running when the environment goes away is cancelled, and its
++// completion lets the environment go without calling into JavaScript.
++static void
++bare_foundation_url_session__on_teardown(js_deferred_teardown_t *handle, void *data) {
++  bare_foundation_url_session__completion_t *completion = data;
+ 
+-  err = js_release_threadsafe_function(tsfn, js_threadsafe_function_release);
+-  assert(err == 0);
++  completion->exiting = true;
+ 
+-  err = js_close_handle_scope(env, scope);
+-  assert(err == 0);
++  [(__bridge NSURLSessionDataTask *) completion->task cancel];
+ }
+ 
+ static void
+@@ -121,15 +141,16 @@ bare_foundation_url_session_data_task(js_env_t *env, js_callback_info_t *info) {
+ 
+   bare_foundation_registry_retain(registry);
+ 
++  bare_foundation_url_session__completion_t *completion = calloc(1, sizeof(bare_foundation_url_session__completion_t));
++
++  completion->tsfn = tsfn;
++
+   js_value_t *result;
+ 
+   @autoreleasepool {
+     NSURLSessionDataTask *task = [(__bridge NSURLSession *) session
+       dataTaskWithRequest:(__bridge NSURLRequest *) request
+         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+-          bare_foundation_url_session__completion_t *completion = malloc(sizeof(bare_foundation_url_session__completion_t));
+-
+-          completion->tsfn = tsfn;
+           completion->data = data ? CFRetain((__bridge CFTypeRef) data) : NULL;
+           completion->response = response ? CFRetain((__bridge CFTypeRef) response) : NULL;
+           completion->error = error ? CFRetain((__bridge CFTypeRef) error) : NULL;
+@@ -138,8 +159,13 @@ bare_foundation_url_session_data_task(js_env_t *env, js_callback_info_t *info) {
+           assert(err == 0);
+         }];
+ 
++    completion->task = CFRetain((__bridge CFTypeRef) task);
++
+     result = bare_foundation_bridge(env, registry, task);
+   }
+ 
++  err = js_add_deferred_teardown_callback(env, bare_foundation_url_session__on_teardown, completion, &completion->teardown);
++  assert(err == 0);
++
+   return result;
+ }
+diff --git a/package.json b/package.json
+index f487d27..9920f7e 100644
+--- a/package.json
++++ b/package.json
+@@ -40,6 +40,7 @@
+   "devDependencies": {
+     "bare-buffer": "^3.0.2",
+     "bare-http1": "^4.6.3",
++    "bare-subprocess": "^6.2.2",
+     "brittle": "^3.18.0",
+     "cmake-bare": "^1.6.5",
+     "lunte": "^1.8.0",
+diff --git a/test.js b/test.js
+index 9ebb495..fad890d 100644
+--- a/test.js
++++ b/test.js
+@@ -1,5 +1,6 @@
+ const test = require('brittle')
+ const http = require('bare-http1')
++const { spawnSync } = require('bare-subprocess')
+ const registry = require('bare-foundation-registry')
+ const binding = require('./binding')
+ const { HTTPURLResponse, ProcessInfo, URLRequest, URLSession, URLSessionDataTask } = require('.')
+@@ -153,6 +154,13 @@ test('a data task that cannot connect fails', async (t) => {
+   task.resume()
+ })
+ 
++test('exiting with a data task in flight', (t) => {
++  const { status, signal } = spawnSync(Bare.argv[0], [require.resolve('./test/fixtures/exit')])
++
++  t.is(signal, null)
++  t.is(status, 0)
++})
++
+ test('a wrapper gives out a handle to its object', (t) => {
+   const session = URLSession.shared
+ 
+diff --git a/test/fixtures/exit.js b/test/fixtures/exit.js
+new file mode 100644
+index 0000000..6517865
+--- /dev/null
++++ b/test/fixtures/exit.js
+@@ -0,0 +1,10 @@
++const http = require('bare-http1')
++const { URLRequest, URLSession } = require('../..')
++
++const server = http.createServer(() => Bare.exit())
++
++server.listen(0, '127.0.0.1', () => {
++  URLSession.shared
++    .dataTask(new URLRequest(`http://127.0.0.1:${server.address().port}/`), () => {})
++    .resume()
++})

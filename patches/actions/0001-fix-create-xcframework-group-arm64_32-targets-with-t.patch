@@ -1,0 +1,29 @@
+From 9f4c0ce830c8224547b54bed97e8f2fc9b0a355a Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:10:41 +0700
+Subject: [PATCH] fix(create-xcframework): group `arm64_32` targets with their
+ platform
+
+---
+ create-xcframework/action.yml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/create-xcframework/action.yml b/create-xcframework/action.yml
+index bdd3e2f..d7e7d1d 100644
+--- a/create-xcframework/action.yml
++++ b/create-xcframework/action.yml
+@@ -35,12 +35,12 @@ runs:
+     - run: |
+         args=()
+ 
+-        for group in $(ls "$PREFIX" | sed -E 's/-(arm64|x64)//' | sort -u); do
++        for group in $(ls "$PREFIX" | sed -E 's/-(arm64_32|arm64|x64)//' | sort -u); do
+           framework="$RUNNER_TEMP/xcframework/$group/$NAME.framework"
+           binaries=()
+ 
+           for target in $(ls "$PREFIX"); do
+-            if [ "$(echo "$target" | sed -E 's/-(arm64|x64)//')" = "$group" ]; then
++            if [ "$(echo "$target" | sed -E 's/-(arm64_32|arm64|x64)//')" = "$group" ]; then
+               if [ ! -d "$framework" ]; then
+                 mkdir -p "$(dirname "$framework")"
+                 cp -R "$PREFIX/$target/$NAME.framework" "$framework"

@@ -1,0 +1,23 @@
+From 9c83436575fdd6c4696246a97143a5cf7abfff0a Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:10:15 +0700
+Subject: [PATCH] fix: build the iOS suspension for iOS only
+
+---
+ src/CMakeLists.txt | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index a84ba76..9eed59e 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -93,7 +93,8 @@ if(NOT APPLE AND NOT ANDROID)
+   )
+ endif()
+ 
+-if(IOS)
++# Not `IOS`, which c-ares caches as true for watchOS too.
++if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+   target_sources(
+     bare_kit
+     PRIVATE

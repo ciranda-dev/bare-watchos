@@ -1,0 +1,61 @@
+From 93cf2c12548446b2de6c70f8341c8929f52faf19 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 13:54:15 +0700
+Subject: [PATCH] feat: support `watchos` and `arm64_32`
+
+---
+ cmake-bare.cmake | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/cmake-bare.cmake b/cmake-bare.cmake
+index aa20c91..6c810bb 100644
+--- a/cmake-bare.cmake
++++ b/cmake-bare.cmake
+@@ -63,7 +63,7 @@ function(download_bare result)
+     cmake_path(APPEND output bin bare OUTPUT_VARIABLE ${result})
+ 
+     if(import_file)
+-      if(target MATCHES "darwin|ios")
++      if(target MATCHES "darwin|ios|watchos")
+         cmake_path(APPEND output lib libbare.tbd OUTPUT_VARIABLE ${import_file})
+       else()
+         set(${import_file} ${import_file}-NOTFOUND)
+@@ -160,7 +160,7 @@ function(bare_platform result)
+ 
+   string(TOLOWER "${platform}" platform)
+ 
+-  if(platform MATCHES "darwin|ios|linux|android|wasi|freertos")
++  if(platform MATCHES "darwin|ios|watchos|linux|android|wasi|freertos")
+     set(${result} ${platform})
+   elseif(platform MATCHES "windows")
+     set(${result} "win32")
+@@ -196,7 +196,10 @@ function(bare_arch result)
+ 
+   string(TOLOWER "${arch}" arch)
+ 
+-  if(arch MATCHES "arm64|aarch64")
++  # Tested before arm64, which it would otherwise match.
++  if(arch MATCHES "arm64_32")
++    set(${result} "arm64_32")
++  elseif(arch MATCHES "arm64|aarch64")
+     set(${result} "arm64")
+   elseif(arch MATCHES "armv8m")
+     set(${result} "armv8m")
+@@ -234,7 +237,7 @@ function(bare_simulator result)
+     set(sysroot ${CMAKE_OSX_SYSROOT})
+   endif()
+ 
+-  if(sysroot MATCHES "iPhoneSimulator")
++  if(sysroot MATCHES "iPhoneSimulator|WatchSimulator")
+     set(${result} YES)
+   else()
+     set(${result} NO)
+@@ -251,7 +254,7 @@ function(bare_environment result)
+   set(environment "")
+ 
+   if(NOT ARGV_HOST)
+-    if(APPLE AND CMAKE_OSX_SYSROOT MATCHES "iPhoneSimulator")
++    if(APPLE AND CMAKE_OSX_SYSROOT MATCHES "iPhoneSimulator|WatchSimulator")
+       set(environment "simulator")
+     elseif(LINUX AND CMAKE_C_COMPILER_TARGET MATCHES "-linux-(musl(sf)?)")
+       set(environment "${CMAKE_MATCH_1}")

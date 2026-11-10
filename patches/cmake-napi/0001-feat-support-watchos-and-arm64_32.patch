@@ -1,0 +1,43 @@
+From 114c6311aab92aabf1cc6163b1254a28582662de Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 13:54:34 +0700
+Subject: [PATCH] feat: support `watchos` and `arm64_32`
+
+---
+ cmake-napi.cmake | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/cmake-napi.cmake b/cmake-napi.cmake
+index 6e5a2c4..0ed3f41 100644
+--- a/cmake-napi.cmake
++++ b/cmake-napi.cmake
+@@ -115,7 +115,7 @@ function(napi_platform result)
+ 
+   string(TOLOWER ${platform} platform)
+ 
+-  if(platform MATCHES "darwin|ios|linux|android")
++  if(platform MATCHES "darwin|ios|watchos|linux|android")
+     set(${result} ${platform})
+   elseif(platform MATCHES "windows")
+     set(${result} "win32")
+@@ -143,7 +143,10 @@ function(napi_arch result)
+ 
+   string(TOLOWER ${arch} arch)
+ 
+-  if(arch MATCHES "arm64|aarch64")
++  # Tested before arm64, which it would otherwise match.
++  if(arch MATCHES "arm64_32")
++    set(${result} "arm64_32")
++  elseif(arch MATCHES "arm64|aarch64")
+     set(${result} "arm64")
+   elseif(arch MATCHES "armv7-a|armeabi-v7a")
+     set(${result} "arm")
+@@ -280,7 +283,7 @@ function(add_napi_module result)
+ 
+   napi_target(host)
+ 
+-  if(host MATCHES "ios")
++  if(host MATCHES "ios|watchos")
+     return(PROPAGATE ${result})
+   endif()
+ 

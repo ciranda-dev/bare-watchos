@@ -1,0 +1,31 @@
+From be5553bcf3956e9815e1cfd26e87f7a0aa2dd265 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:11:42 +0700
+Subject: [PATCH] feat: build for `watchos`
+
+---
+ CMakeLists.txt | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5f9e344..3d7b2e8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -72,7 +72,7 @@ target_compile_definitions(
+     HAVE_TI_MODE=1
+ )
+ 
+-if(target MATCHES "darwin|ios")
++if(target MATCHES "darwin|ios|watchos")
+   target_compile_definitions(
+     sodium
+     PRIVATE
+@@ -100,7 +100,7 @@ if(target MATCHES "darwin|ios")
+       HAVE_WEAK_SYMBOLS=1
+   )
+ 
+-  if(NOT target MATCHES "ios")
++  if(NOT target MATCHES "ios|watchos")
+     target_compile_definitions(
+       sodium
+       PRIVATE

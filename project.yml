@@ -3,7 +3,7 @@ include:
   - app/addons/addons.yml
 packages:
   BareKit:
-    path: ../forks/bare-kit-swift
+    path: vendor/bare-kit-swift
   # The last releases before macOS 13 and iOS 15, as the spec's packages are generated for macOS 11 and
   # iOS 14, which is watchOS 7 to Swift Package Manager.
   BareRPC:

@@ -1,0 +1,84 @@
+From 1e26be1a8854600d3dab08c51d182d053e2a4de2 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:10:15 +0700
+Subject: [PATCH] feat: add `watchos` for `Bare.platform` and `arm64_32` for
+ `Bare.arch`
+
+---
+ CMakeLists.txt        | 2 +-
+ bin/CMakeLists.txt    | 2 +-
+ include/bare/target.h | 8 +++++++-
+ src/bare.d.ts         | 4 ++--
+ 4 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c2827bf..8e8ee56 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -319,7 +319,7 @@ if(target MATCHES "win32")
+     INTERFACE
+       "${exports_file}"
+   )
+-elseif(target MATCHES "darwin|ios")
++elseif(target MATCHES "darwin|ios|watchos")
+   set(exports_file "${CMAKE_CURRENT_BINARY_DIR}/bare.exp")
+ 
+   list(TRANSFORM exports PREPEND "_")
+diff --git a/bin/CMakeLists.txt b/bin/CMakeLists.txt
+index 436e069..415a1af 100644
+--- a/bin/CMakeLists.txt
++++ b/bin/CMakeLists.txt
+@@ -33,7 +33,7 @@ target_link_libraries(
+     rlimit_static
+ )
+ 
+-if(target MATCHES "darwin|ios")
++if(target MATCHES "darwin|ios|watchos")
+   target_link_libraries(
+     bare_bin
+     PRIVATE
+diff --git a/include/bare/target.h b/include/bare/target.h
+index dd4b48e..3e46c32 100644
+--- a/include/bare/target.h
++++ b/include/bare/target.h
+@@ -6,6 +6,9 @@
+ #if TARGET_OS_IOS
+ #define BARE_PLATFORM "ios"
+ #define BARE_PLATFORM_IOS
++#elif TARGET_OS_WATCH
++#define BARE_PLATFORM "watchos"
++#define BARE_PLATFORM_WATCHOS
+ #elif TARGET_OS_MAC
+ #define BARE_PLATFORM "darwin"
+ #define BARE_PLATFORM_DARWIN
+@@ -30,7 +33,10 @@
+ #error Unsupported platform
+ #endif
+ 
+-#if defined(__aarch64__) || defined(_M_ARM64)
++#if defined(__aarch64__) && defined(__ILP32__)
++#define BARE_ARCH "arm64_32"
++#define BARE_ARCH_ARM64_32
++#elif defined(__aarch64__) || defined(_M_ARM64)
+ #define BARE_ARCH "arm64"
+ #define BARE_ARCH_ARM64
+ #elif defined(__arm__) || defined(_M_ARM)
+diff --git a/src/bare.d.ts b/src/bare.d.ts
+index d74f9fe..c9a829e 100644
+--- a/src/bare.d.ts
++++ b/src/bare.d.ts
+@@ -92,12 +92,12 @@ interface Bare extends EventEmitter<BareEvents> {
+   /**
+    * The identifier of the operating system for which Bare was compiled.
+    */
+-  readonly platform: 'android' | 'darwin' | 'ios' | 'linux' | 'win32'
++  readonly platform: 'android' | 'darwin' | 'ios' | 'linux' | 'watchos' | 'win32'
+ 
+   /**
+    * The identifier of the processor architecture for which Bare was compiled.
+    */
+-  readonly arch: 'arm' | 'arm64' | 'ia32' | 'x64' | 'mips' | 'mipsel' | 'riscv64'
++  readonly arch: 'arm' | 'arm64' | 'arm64_32' | 'ia32' | 'x64' | 'mips' | 'mipsel' | 'riscv64'
+ 
+   /** @deprecated */
+   readonly simulator: boolean

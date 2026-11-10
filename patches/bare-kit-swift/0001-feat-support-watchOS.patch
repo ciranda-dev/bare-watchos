@@ -1,0 +1,125 @@
+From ae62f06a5ee3be6a83e39c3c88159d8c859f5c65 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:10:15 +0700
+Subject: [PATCH] feat: support watchOS
+
+---
+ .github/workflows/prebuild.yml | 13 +++++++++++++
+ CMakeLists.txt                 |  9 ++++++++-
+ Package.swift                  |  2 +-
+ README.md                      |  2 +-
+ lib/watchOS.plist              | 30 ++++++++++++++++++++++++++++++
+ 5 files changed, 53 insertions(+), 3 deletions(-)
+ create mode 100644 lib/watchOS.plist
+
+diff --git a/.github/workflows/prebuild.yml b/.github/workflows/prebuild.yml
+index 27104bf..351cdbf 100644
+--- a/.github/workflows/prebuild.yml
++++ b/.github/workflows/prebuild.yml
+@@ -31,6 +31,19 @@ jobs:
+             arch: x64
+             tags: -simulator
+             flags: --simulator
++          - os: macos-15
++            platform: watchos
++            arch: arm64_32
++            flags: -D BARE_ENGINE=github:holepunchto/libqjsng#8f10631
++          - os: macos-15
++            platform: watchos
++            arch: arm64
++            flags: -D BARE_ENGINE=github:holepunchto/libqjsng#8f10631
++          - os: macos-15
++            platform: watchos
++            arch: arm64
++            tags: -simulator
++            flags: --simulator -D BARE_ENGINE=github:holepunchto/libqjsng#8f10631
+     runs-on: ${{ matrix.os }}
+     name: Build / ${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.tags }}
+     steps:
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2533e53..fdcfebe 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -21,12 +21,19 @@ set_target_properties(
+   MACOSX_FRAMEWORK_SHORT_VERSION_STRING ${PROJECT_VERSION}
+ )
+ 
+-if(IOS)
++# Not `IOS`, which c-ares caches as true for watchOS too.
++if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+   set_target_properties(
+     bare_kit_framework
+     PROPERTIES
+     MACOSX_FRAMEWORK_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/lib/iOS.plist"
+   )
++elseif(CMAKE_SYSTEM_NAME STREQUAL "watchOS")
++  set_target_properties(
++    bare_kit_framework
++    PROPERTIES
++    MACOSX_FRAMEWORK_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/lib/watchOS.plist"
++  )
+ else()
+   set_target_properties(
+     bare_kit_framework
+diff --git a/Package.swift b/Package.swift
+index 6d3c220..3dce66e 100644
+--- a/Package.swift
++++ b/Package.swift
+@@ -13,7 +13,7 @@ let framework: Target =
+ 
+ let package = Package(
+   name: "BareKit",
+-  platforms: [.macOS(.v13), .iOS(.v15)],
++  platforms: [.macOS(.v13), .iOS(.v15), .watchOS(.v8)],
+   products: [
+     .library(name: "BareKit", targets: ["BareKit"])
+   ],
+diff --git a/README.md b/README.md
+index 8613406..d0dc620 100644
+--- a/README.md
++++ b/README.md
+@@ -49,7 +49,7 @@ These bindings are a thin layer over [Bare Kit](https://github.com/holepunchto/b
+ 
+ ## Platforms
+ 
+-The package supports iOS and macOS, and includes Bare Kit as a framework from its release. A relative filename names a resource of the application bundle, which extensions share with their application.
++The package supports iOS, macOS, and watchOS, and includes Bare Kit as a framework from its release. On watchOS, where V8 doesn't run, Bare Kit is built with QuickJS-NG through <https://github.com/holepunchto/libqjsng>. A relative filename names a resource of the application bundle, which extensions share with their application.
+ 
+ Native addons linked with <https://github.com/holepunchto/bare-link> are loaded by the system linker, so embed them in the application as you would any other framework.
+ 
+diff --git a/lib/watchOS.plist b/lib/watchOS.plist
+new file mode 100644
+index 0000000..131486b
+--- /dev/null
++++ b/lib/watchOS.plist
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0">
++<dict>
++	<key>CFBundleDevelopmentRegion</key>
++	<string>English</string>
++	<key>CFBundleExecutable</key>
++	<string>${MACOSX_FRAMEWORK_NAME}</string>
++	<key>CFBundleIconFile</key>
++	<string>${MACOSX_FRAMEWORK_ICON_FILE}</string>
++	<key>CFBundleIdentifier</key>
++	<string>${MACOSX_FRAMEWORK_IDENTIFIER}</string>
++	<key>CFBundleInfoDictionaryVersion</key>
++	<string>6.0</string>
++	<key>CFBundleName</key>
++	<string>${MACOSX_FRAMEWORK_BUNDLE_NAME}</string>
++	<key>CFBundlePackageType</key>
++	<string>FMWK</string>
++	<key>CFBundleSignature</key>
++	<string>????</string>
++	<key>CFBundleVersion</key>
++	<string>${MACOSX_FRAMEWORK_BUNDLE_VERSION}</string>
++	<key>CFBundleShortVersionString</key>
++	<string>${MACOSX_FRAMEWORK_SHORT_VERSION_STRING}</string>
++	<key>CSResourcesFileMapped</key>
++	<true/>
++	<key>MinimumOSVersion</key>
++	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
++</dict>
++</plist>

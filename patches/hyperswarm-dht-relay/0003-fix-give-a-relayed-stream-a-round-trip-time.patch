@@ -1,0 +1,131 @@
+From d0ff00541a93fce48cb18b74aaa541dc18e42e5d Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 20:40:00 +0700
+Subject: [PATCH 3/4] fix: give a relayed stream a round trip time
+
+blind-pairing sends a pairing request only on a channel whose raw stream has an rtt below Infinity, so a relayed candidate never sent one. A relayed stream isn't measured: its rtt is 0, what a UDX stream reads before its first sample.
+---
+ lib/stream.js       |  5 +++++
+ package.json        |  1 +
+ test/connection.mjs | 23 +++++++++++++++++++++
+ test/pairing.mjs    | 49 +++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 78 insertions(+)
+ create mode 100644 test/pairing.mjs
+
+diff --git a/lib/stream.js b/lib/stream.js
+index 3895f2c..65fc4e3 100644
+--- a/lib/stream.js
++++ b/lib/stream.js
+@@ -42,6 +42,11 @@ class Stream extends Duplex {
+     return this._keyPair.publicKey
+   }
+ 
++  // Not measured through the relay: 0, what a UDX stream reads before its first sample
++  get rtt () {
++    return 0
++  }
++
+   alloc (len) {
+     return buffer.allocUnsafe(len)
+   }
+diff --git a/package.json b/package.json
+index 00ada1e..5f88968 100644
+--- a/package.json
++++ b/package.json
+@@ -48,6 +48,7 @@
+     "ws": "^8.12.1"
+   },
+   "devDependencies": {
++    "blind-pairing": "^2.3.1",
+     "brittle": "^3.2.1",
+     "hypercore": "^10.0.0-alpha.34",
+     "hyperswarm": "^4.0.1",
+diff --git a/test/connection.mjs b/test/connection.mjs
+index bc1f968..109dc07 100644
+--- a/test/connection.mjs
++++ b/test/connection.mjs
+@@ -107,6 +107,29 @@ test('client mode, keep-alive of the server', (t) =>
+   }))))
+ )
+ 
++test('client mode, round trip time of the raw stream', (t) =>
++  withDHT((a) => withRelay(a, (withDHT) => withMatrix({ custodial: [true, false] }, (options) => withDHT(options, async (b) => {
++    t.comment(`custodial = ${options.custodial}`)
++
++    const rtt = t.test('rtt')
++    rtt.plan(1)
++
++    const server = a.createServer((socket) => {
++      socket.resume().on('end', () => socket.end())
++    })
++    await server.listen()
++
++    const socket = b.connect(server.publicKey)
++
++    socket.once('open', () => {
++      rtt.ok(socket.rawStream.rtt < Infinity, 'a number below Infinity')
++      socket.resume().end()
++    })
++
++    await rtt.then(() => server.close())
++  }))))
++)
++
+ test('connect to nonexisting key', (t) =>
+   withDHT((a) => withRelay(a, (withDHT) => withDHT(async (b) => {
+     const e = t.test('error')
+diff --git a/test/pairing.mjs b/test/pairing.mjs
+new file mode 100644
+index 0000000..19db611
+--- /dev/null
++++ b/test/pairing.mjs
+@@ -0,0 +1,49 @@
++import test from 'brittle'
++import BlindPairing from 'blind-pairing'
++import { randomBytes } from 'crypto'
++import HyperDHT from 'hyperdht'
++import Hyperswarm from 'hyperswarm'
++
++import { withDHT } from './helpers/with-dht.mjs'
++import { withRelay } from './helpers/ws/with-relay.mjs'
++import { withSwarm } from './helpers/with-swarm.mjs'
++
++test('blind pairing, relayed candidate', (t) =>
++  withDHT((a) => withRelay(a, (withDHT) => withDHT({ custodial: false }, (b) => withSwarm(b, async (swarm) => {
++    const pairing = t.test('paired')
++    pairing.plan(2)
++
++    const key = randomBytes(32)
++    const { invite, publicKey, discoveryKey } = BlindPairing.createInvite(key)
++
++    const bootstrap = [{ host: '127.0.0.1', port: a.address().port }]
++    const memberSwarm = new Hyperswarm({
++      dht: new HyperDHT({ bootstrap, host: '127.0.0.1', ephemeral: false, firewalled: false })
++    })
++    const memberPairing = new BlindPairing(memberSwarm)
++    const member = memberPairing.addMember({
++      discoveryKey,
++      onadd (request) {
++        request.open(publicKey)
++        request.confirm({ key })
++      }
++    })
++    await member.flushed()
++
++    const candidatePairing = new BlindPairing(swarm)
++    const candidate = candidatePairing.addCandidate({
++      invite,
++      userData: randomBytes(32),
++      onadd (result) {
++        pairing.alike(result.key, key, 'the member’s key')
++      }
++    })
++
++    pairing.ok(await candidate.pairing, 'through the relay')
++
++    await pairing
++    await candidatePairing.close()
++    await memberPairing.close()
++    await memberSwarm.destroy()
++  }))))
++)

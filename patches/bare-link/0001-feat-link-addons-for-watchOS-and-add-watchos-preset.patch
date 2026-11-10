@@ -1,0 +1,629 @@
+From c773cdad643abca8249746d135944681f1e4a573 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:12:27 +0700
+Subject: [PATCH] feat: link addons for watchOS and add `watchos` preset
+
+---
+ index.js                                      |   3 +
+ lib/platform/apple.js                         |  11 ++-
+ lib/platform/apple/create-framework.js        |   7 +-
+ lib/platform/apple/create-xcframework.js      |  13 ++++
+ lib/preset.d.ts                               |   3 +-
+ lib/preset.js                                 |   1 +
+ lib/preset/watchos.d.ts                       |   3 +
+ lib/preset/watchos.js                         |   3 +
+ lib/references.js                             |   3 +-
+ test/addon.js                                 |  66 ++++++++++++++++++
+ test/dependent-addon.js                       |  24 +++++++
+ .../watchos-arm64-simulator/addon.bare        | Bin 0 -> 50048 bytes
+ .../addon/prebuilds/watchos-arm64/addon.bare  | Bin 0 -> 65888 bytes
+ .../prebuilds/watchos-arm64_32/addon.bare     | Bin 0 -> 65856 bytes
+ .../prebuilds/watchos-arm64-simulator/a.bare  | Bin 0 -> 50072 bytes
+ .../a/prebuilds/watchos-arm64/a.bare          | Bin 0 -> 65928 bytes
+ .../a/prebuilds/watchos-arm64_32/a.bare       | Bin 0 -> 65892 bytes
+ .../prebuilds/watchos-arm64-simulator/b.bare  | Bin 0 -> 50088 bytes
+ .../b/prebuilds/watchos-arm64/b.bare          | Bin 0 -> 65936 bytes
+ .../b/prebuilds/watchos-arm64_32/b.bare       | Bin 0 -> 65896 bytes
+ 20 files changed, 131 insertions(+), 6 deletions(-)
+ create mode 100644 lib/preset/watchos.d.ts
+ create mode 100644 lib/preset/watchos.js
+ create mode 100644 test/fixtures/addon/prebuilds/watchos-arm64-simulator/addon.bare
+ create mode 100644 test/fixtures/addon/prebuilds/watchos-arm64/addon.bare
+ create mode 100644 test/fixtures/addon/prebuilds/watchos-arm64_32/addon.bare
+ create mode 100644 test/fixtures/dependent-addon/a/prebuilds/watchos-arm64-simulator/a.bare
+ create mode 100644 test/fixtures/dependent-addon/a/prebuilds/watchos-arm64/a.bare
+ create mode 100644 test/fixtures/dependent-addon/a/prebuilds/watchos-arm64_32/a.bare
+ create mode 100644 test/fixtures/dependent-addon/b/prebuilds/watchos-arm64-simulator/b.bare
+ create mode 100644 test/fixtures/dependent-addon/b/prebuilds/watchos-arm64/b.bare
+ create mode 100644 test/fixtures/dependent-addon/b/prebuilds/watchos-arm64_32/b.bare
+
+diff --git a/index.js b/index.js
+index 818f8f2..8bd0ca4 100644
+--- a/index.js
++++ b/index.js
+@@ -38,6 +38,9 @@ async function* linkAddon(base, pkg, opts) {
+         case 'ios-arm64':
+         case 'ios-arm64-simulator':
+         case 'ios-x64-simulator':
++        case 'watchos-arm64':
++        case 'watchos-arm64-simulator':
++        case 'watchos-arm64_32':
+           platform = require('./lib/platform/apple')
+           break
+         case 'android-arm64':
+diff --git a/lib/platform/apple.js b/lib/platform/apple.js
+index 2582dce..2080f99 100644
+--- a/lib/platform/apple.js
++++ b/lib/platform/apple.js
+@@ -8,7 +8,9 @@ module.exports = async function* apple(base, pkg, name, version, opts = {}) {
+   const archs = new Map([
+     ['macos', []],
+     ['ios', []],
+-    ['ios-simulator', []]
++    ['ios-simulator', []],
++    ['watchos', []],
++    ['watchos-simulator', []]
+   ])
+ 
+   for (const host of hosts) {
+@@ -26,6 +28,13 @@ module.exports = async function* apple(base, pkg, name, version, opts = {}) {
+       case 'ios-x64-simulator':
+         arch = archs.get('ios-simulator')
+         break
++      case 'watchos-arm64':
++      case 'watchos-arm64_32':
++        arch = archs.get('watchos')
++        break
++      case 'watchos-arm64-simulator':
++        arch = archs.get('watchos-simulator')
++        break
+       default:
+         throw new Error(`Unknown host '${host}'`)
+     }
+diff --git a/lib/platform/apple/create-framework.js b/lib/platform/apple/create-framework.js
+index f87294a..1855f5e 100644
+--- a/lib/platform/apple/create-framework.js
++++ b/lib/platform/apple/create-framework.js
+@@ -20,6 +20,7 @@ module.exports = async function* createFramework(base, pkg, name, version, hosts
+   if (prebuilds.length === 0) return null
+ 
+   const isMac = hosts.some((host) => host.startsWith('darwin'))
++  const isWatch = hosts.some((host) => host.startsWith('watchos'))
+ 
+   const framework = path.resolve(out, `${name}.${version}.framework`)
+   await fs.rm(framework)
+@@ -131,7 +132,7 @@ module.exports = async function* createFramework(base, pkg, name, version, hosts
+   yield executable
+ 
+   const info = path.join(resources, 'Info.plist')
+-  await fs.writeFile(info, createPropertyList(isMac, name, version))
++  await fs.writeFile(info, createPropertyList(isMac, isWatch, name, version))
+   yield info
+ 
+   await sign(framework, opts)
+@@ -140,7 +141,7 @@ module.exports = async function* createFramework(base, pkg, name, version, hosts
+   return framework
+ }
+ 
+-function createPropertyList(isMac, name, version) {
++function createPropertyList(isMac, isWatch, name, version) {
+   const executable = `${name}.${version}`
+ 
+   const { major, minor, patch } = Version.parse(version)
+@@ -163,7 +164,7 @@ function createPropertyList(isMac, name, version) {
+   <key>CFBundlePackageType</key>
+   <string>FMWK</string>
+   <key>${isMac ? 'LSMinimumSystemVersion' : 'MinimumOSVersion'}</key>
+-  <string>${isMac ? '13.0' : '15.0'}</string>
++  <string>${isMac ? '13.0' : isWatch ? '8.0' : '15.0'}</string>
+ </dict>
+ </plist>
+ `
+diff --git a/lib/platform/apple/create-xcframework.js b/lib/platform/apple/create-xcframework.js
+index 3d25ca3..28ffbcf 100644
+--- a/lib/platform/apple/create-xcframework.js
++++ b/lib/platform/apple/create-xcframework.js
+@@ -39,6 +39,19 @@ module.exports = async function* createXCFramework(name, version, inputs, out, o
+           variant = 'simulator'
+           archs.push('x86_64')
+           break
++        case 'watchos-arm64':
++          os = 'watchos'
++          archs.push('arm64')
++          break
++        case 'watchos-arm64_32':
++          os = 'watchos'
++          archs.push('arm64_32')
++          break
++        case 'watchos-arm64-simulator':
++          os = 'watchos'
++          variant = 'simulator'
++          archs.push('arm64')
++          break
+       }
+     }
+ 
+diff --git a/lib/preset.d.ts b/lib/preset.d.ts
+index 3d7bbf6..cdb2acf 100644
+--- a/lib/preset.d.ts
++++ b/lib/preset.d.ts
+@@ -5,6 +5,7 @@ import desktop = require('./preset/desktop')
+ import ios = require('./preset/ios')
+ import linux = require('./preset/linux')
+ import mobile = require('./preset/mobile')
++import watchos = require('./preset/watchos')
+ import win32 = require('./preset/win32')
+ 
+-export { android, apple, darwin, desktop, ios, linux, mobile, win32 }
++export { android, apple, darwin, desktop, ios, linux, mobile, watchos, win32 }
+diff --git a/lib/preset.js b/lib/preset.js
+index 0f9e935..d68ecf3 100644
+--- a/lib/preset.js
++++ b/lib/preset.js
+@@ -5,4 +5,5 @@ exports.desktop = require('./preset/desktop')
+ exports.ios = require('./preset/ios')
+ exports.linux = require('./preset/linux')
+ exports.mobile = require('./preset/mobile')
++exports.watchos = require('./preset/watchos')
+ exports.win32 = require('./preset/win32')
+diff --git a/lib/preset/watchos.d.ts b/lib/preset/watchos.d.ts
+new file mode 100644
+index 0000000..4dbcbc1
+--- /dev/null
++++ b/lib/preset/watchos.d.ts
+@@ -0,0 +1,3 @@
++declare const preset: { hosts: string[] }
++
++export = preset
+diff --git a/lib/preset/watchos.js b/lib/preset/watchos.js
+new file mode 100644
+index 0000000..1f2ce23
+--- /dev/null
++++ b/lib/preset/watchos.js
+@@ -0,0 +1,3 @@
++module.exports = {
++  hosts: ['watchos-arm64', 'watchos-arm64-simulator', 'watchos-arm64_32']
++}
+diff --git a/lib/references.js b/lib/references.js
+index 5624dce..e6b9b25 100644
+--- a/lib/references.js
++++ b/lib/references.js
+@@ -27,7 +27,8 @@ function libraries(host, data) {
+ 
+   switch (platform) {
+     case 'darwin':
+-    case 'ios': {
++    case 'ios':
++    case 'watchos': {
+       const fat = MachO.FatBinary.parse(data)
+ 
+       return (name) => {
+diff --git a/test/addon.js b/test/addon.js
+index d329652..f1d097d 100644
+--- a/test/addon.js
++++ b/test/addon.js
+@@ -266,6 +266,72 @@ test('addon, ios-arm64 + ios-arm64-simulator + ios-x64-simulator', async (t) =>
+   )
+ })
+ 
++test('addon, watchos-arm64 + watchos-arm64_32', async (t) => {
++  const out = await t.tmp()
++  const result = []
++
++  for await (const resource of await link(path.join(fixtures, 'addon', 'index.js'), {
++    out,
++    hosts: ['watchos-arm64', 'watchos-arm64_32']
++  })) {
++    result.push(path.relative(out, resource))
++  }
++
++  t.alike(
++    result,
++    paths([
++      'addon.1.2.3.framework/addon.1.2.3',
++      'addon.1.2.3.framework/Info.plist',
++      'addon.1.2.3.framework'
++    ])
++  )
++
++  const info = fs.readFileSync(path.join(out, 'addon.1.2.3.framework/Info.plist'), 'utf8')
++
++  t.ok(info.includes('<key>MinimumOSVersion</key>\n  <string>8.0</string>'))
++})
++
++test('addon, watchos-arm64-simulator', async (t) => {
++  const out = await t.tmp()
++  const result = []
++
++  for await (const resource of await link(path.join(fixtures, 'addon', 'index.js'), {
++    out,
++    hosts: ['watchos-arm64-simulator']
++  })) {
++    result.push(path.relative(out, resource))
++  }
++
++  t.alike(
++    result,
++    paths([
++      'addon.1.2.3.framework/addon.1.2.3',
++      'addon.1.2.3.framework/Info.plist',
++      'addon.1.2.3.framework'
++    ])
++  )
++})
++
++test('addon, watchos-arm64 + watchos-arm64-simulator + watchos-arm64_32', async (t) => {
++  const out = await t.tmp()
++  const result = []
++
++  for await (const resource of await link(path.join(fixtures, 'addon', 'index.js'), {
++    out,
++    hosts: ['watchos-arm64', 'watchos-arm64-simulator', 'watchos-arm64_32']
++  })) {
++    result.push(path.relative(out, resource))
++  }
++
++  t.alike(
++    result.slice(-2),
++    paths(['addon.1.2.3.xcframework/Info.plist', 'addon.1.2.3.xcframework'])
++  )
++
++  t.ok(fs.existsSync(path.join(out, 'addon.1.2.3.xcframework/watchos-arm64_arm64_32')))
++  t.ok(fs.existsSync(path.join(out, 'addon.1.2.3.xcframework/watchos-arm64-simulator')))
++})
++
+ test('addon, android-arm64', async (t) => {
+   const out = await t.tmp()
+   const result = []
+diff --git a/test/dependent-addon.js b/test/dependent-addon.js
+index b51f5ff..04ff7ec 100644
+--- a/test/dependent-addon.js
++++ b/test/dependent-addon.js
+@@ -123,6 +123,30 @@ test('dependent addon, darwin-arm64 + ios-arm64', async (t) => {
+   )
+ })
+ 
++test('dependent addon, watchos-arm64 + watchos-arm64_32', async (t) => {
++  const out = await t.tmp()
++  const result = []
++
++  for await (const resource of await link(path.join(fixtures, 'dependent-addon/b', 'index.js'), {
++    out,
++    hosts: ['watchos-arm64', 'watchos-arm64_32']
++  })) {
++    result.push(path.relative(out, resource))
++  }
++
++  t.alike(
++    result,
++    paths([
++      'a.1.2.3.framework/a.1.2.3',
++      'a.1.2.3.framework/Info.plist',
++      'a.1.2.3.framework',
++      'b.1.2.3.framework/b.1.2.3',
++      'b.1.2.3.framework/Info.plist',
++      'b.1.2.3.framework'
++    ])
++  )
++})
++
+ test('dependent addon, android-arm64', async (t) => {
+   const out = await t.tmp()
+   const result = []
+diff --git a/test/fixtures/addon/prebuilds/watchos-arm64-simulator/addon.bare b/test/fixtures/addon/prebuilds/watchos-arm64-simulator/addon.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a6b8d187d3cf96ba4b19db5dc2c5466aa0a0789
+GIT binary patch
+literal 50048
+zcmeI*U1%It6bJCLlTEXd7#pmZn5b(kC4P`5Q6T}5Nt<9wOFn4S2*S;7XOgaNcH``9
+zZIX(sQmOQ1BPyXj_!1})MGz5uC~k`iDn#;9gAbC{O8r2oJ}4<B@tm1Eb@SCXq0;|_
+zyLZn0ID7AJW?}Nuetr4Z<qDz@aoNJPit9ir(NWqeT~xz$o=27H?;Pm&x>kRft3%Q;
+zr=Xz945eKAuq#)7S(|U_M!(<G;}RSC+H1m;D-M;)xY>B-O4r(a^Ew}&%_|ZY=Zolk
+z!MLAK9ki39w!<sd=DVQtZP)oEF3v~m_IDuTI*HV<p1(F<q|zU_U5^K`4p-;qPNlM`
+z=MpJPB~n9aFJ65=8g#xvoj~GM`_uhFBlmTRt5O~9{q1UZPxpTR?wWeWCT$51OO*#k
+zo)D#m(?z#+(|i%0>lM>quOsi7^Bz9kA^ZA~tG};c7PmQlZR&PS9PBGNvr@^J%8ZS~
+z(@8bzI-BOZvM<gjIf7Eg7eOxRQ_70Dv0!xl{vtVlEXXHualU_7`d4z!F0M-L+ta<b
+zvtv*2+ba0uWa?JOIh{<bioN8qY~Wh0`%4UeM$EF(DYLmT9&>CSqIwo=l8XY7>@mWv
+ztO-iAKosS`<W}}2XP5Cj$MQSA#O)}z<y?EYN(uHNb7gzdZdMiw8++990{NaNOV7-;
+zmA3r;=J~er*@lWj3-?92-oVw{v2mOCeI7$-HheGl%JUZ#`5m`%m0bQl_VKnuv@@G=
+zb|w>Xsr$z=u07JYtI-<c$X{8<F5)Na&15=e*^U~Gxd(R!fGv#=$V{0R<#ywFL_2s)
+z_H(S@``)8t@slFIa~U5z&F8urluSl}00bZa0SG|gdKJi1v~{vjqRy_oOmj;Up_!%K
+zG<mL!7Wus^e^+no<o9>eq(QmY_(kXSg)(z-X`+3G=Xz`S9WB4rFc-<V^K2hqH`mkT
+zrAI%RX)5aHIn|3RE4K=8@#{{PolK^qLr!`m>UGOFf2X_yd8N3OR~h+R&E!^U@OPJ7
+z7Z-VNt0056ah1aFQIb-Eu*4`3fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=
+z5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHaf
+zKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHafKmY;|fB*y_
+z009U<00Izz00bZa0SG|gS{3+P|G)Ov>i)1V2tWV=5P$##AOHafKmY;|fB*y_009U<
+z00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHafKmY;|fB*y_009U<00Izz00bZa
+z0SG_<0uX?}^&n7HPknOED$^QES}Nma<0_s=S++xc&r+Todc;&uXVd}5j=46EJBie=
+z%DO|XJSZik;xWfoR4qXXP1W+pbS;rFY`bbCZDo_TO2tNOb*PCd9eX&Dacw6U;J%w>
+z9r3yfuYHO?D<edaoEMV8%}pU5*Z)odXZGT09Y4r14=?+(iT3(2clo7+n=n^tr9{c!
+z?*_Z`2R7K^Cg)!Vrj*w;>Ld=amH&O0zpE%PMh!>7p0;rxAIm5ugLh_lN0iwE{tDug
+zogR!D<b&wWt2AaX7PG8$%4}|w8$!RFd-3s4)v=|_%>0Rm$1ir~x_(ZW`L^S)+_CWS
+z#ql#8@4fKu2LtKPe;O);znPnR#^@O+T{-gMk@2J7o;u$3>isAG@8erWb6<uJpStD5
+zj(O*!>BpiSf6h!>xgUDonC+h1e&N2l|N4A|=gVpMtBKEQ-g&#c?ukXWce(E`>!Fuw
+R&;Rko`xC$IdQ0E5e*m+1`V9a8
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/addon/prebuilds/watchos-arm64/addon.bare b/test/fixtures/addon/prebuilds/watchos-arm64/addon.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..cef9d4647b3f5303cb65914178445f6050e3a7e1
+GIT binary patch
+literal 65888
+zcmeI(&ubiI7{KvoH>p`L)`k|Wsp1+%v`CV+9txsNY>O=o)zBPz5Z>%|Ch5v%cb%QB
+zhF%s#5cIGs9`x!hM=##Q{006%C>|@lcoA}qkfzTw?@YScY_6WZFFf<k^Zt1DozLzb
+z=ePg<eKaXj5N%IsOlhnf6Zt|;*pNK0@t4jzw|wQ+ayoSI(mj|;mTL*g!&W$#M4u&g
+z=i8xrfgjI05xpt;A%7juEBn;BcG9V~_g4(p3j#l-&z3gJ2kVuxdilJs=k7%HRut=w
+z;d+a@-`cCb6Uztd$)WSzZYOcAv6ihLuGiB2)?W0T<aw4JtgVC2bsC@68lkH-R-0*l
+z@cZZme&>qs#PS2@%f|E0zSr+GoV&cRyx=Z<aO0-`cDvb%AnS+nF&(zBAB_D%oLg%S
+ze62^;E9u&_b^ZP<OMi3ek1rdrbN!>?&y}yzek;2VvVJJf&y_#3bM=aAZ>(3Fb=OMb
+zBkS#-OY2#UyiMp$UdzUu3oA(_pFMoO(w3jg>sdZn@5xSoXU}<6!@0$4H?Ci~d~N@~
+zm1zWiUG~?Mm2B9$>^5ESj9y>YIGv4;75$1z7&aThx!GzZj%?wKNO#_Dbhn+cq`mFQ
+zTUqn6CV}>LE_-&H?`dxT<8AF*+CQ!Fp@y~mEVkC3)%v5_16@7J<BV>w&-r2E<gxF6
+ze*4x}zrS<g&mSNDbY92G8si!w(^`Bw{k*hB;n(rAI%>bayuGP6>GK47W05uce_zzF
+zIe)%IeVl^Kb=vV<y;iljxzSFd_1X7k!wt>+#uwDfTy1|)Z&t!6cCAWsXD)|5KYPJe
+z+Pbp#qt}VNrgL`AFZDCc{f#U)R~iBcAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}
+z0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0wV-^vQ_ABjk)`K
+zpUWS+_X?Z4m!$vqgzV@Ws=b%D3;l<$NWUoEZ}i34Zy!tqJG=K5Hg#>fN8bhRohSx7
+zQhe$DlHQ-2k^c7kziiGAjO&`yJ9~T2*=G;FK6^E)*PG?lxVc_Vhi%^8iq&^&(>B<r
+z@9qZv)n4r+u#2`Jy*|0v`@xe^lv5hk^u1gwX^DT8*am3`Ab<b@2q1s}0tg_000Iag
+zfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}
+z0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*sr
+zAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IaM353DW04V|pAb<b@2q1s}
+z0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*sr
+zAb<b@2q1s}0tg_000Id7?*daZvSc4R6@(l0(6y6J)m3YaFp6dA6X{7T?*{JUw!0li
+zl_b*nxYk&6on-Z*PFgFtY9)@GOj|N8-EKjzU+YzhYf<9Xn_;IOxkhC@a(CzDcpR<O
+z+DR1W6FPRvcIv)K>p#*sUJ@y7S*Arap4DO!XlOg5VfkcWnaEojnm$Ssy<GRX?MU00
+jUdJ`8w^kN^-VtZ>6C)0I#Pc5lb1off#kIR?<v;H+e0U5F
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/addon/prebuilds/watchos-arm64_32/addon.bare b/test/fixtures/addon/prebuilds/watchos-arm64_32/addon.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..f90a595203e23f97bd07c3d49b5edc5fbb92fbcf
+GIT binary patch
+literal 65856
+zcmeI(&1+m$7{~EvCZh(7HHiUB8);g^HzaR%(S^v3ZLy`H8rnq{%5kQ1la5Sg;+>mn
+zs9;0|7g;3WAE3A~|3SKPpc`>fDM<edp*vAX<L|jMH<{*TEyDMZ=RW8Cp7~5>dG7!7
+z=i>phV!_OwRtzb&N@m~Mpn2b#9wA)6c;mVny=ArAP<~3)JiIrAH2ysGTBjUXADQVd
+zdlWtArDUslHH22WTxsRa180aLGo9N!_wLc(-NVN^dxTqYeJM_|_LHAuR%>5YzvtdP
+z?1^*SY^6!9v7mWg_J5Y8$m}Kcd+sg0`-QOF_^j5bhFW93sY(0ySdYv;R=?-ob?VwJ
+z{#|^b2;sua^_g(~{j1kH-^i*uBSkm&sp{eL2NfYKG<&{^L)Yu;&er$7+y57Q4=<kE
+ziq5-L$xB<6NYTytyYqcQsFy=)WwFw%hov+*bba=2t<TqJH+x2rw?n9w)3Wz=%KkHy
+z+GhP4@|>^f%-nnW`Ohgrn7w@U%Eb$pcmJ0)68XG>MXLHdkGwpm%4>?_3h(dBekBDf
+zSF6oNG&No+C$YNijPxeGqFMfVO3J<_FQaOYsqwb*C1pRSkFTliznedl>&nk6K2Uhc
+z&*F34)$>v1SIzc0`^!mn_<KJ3?e1T1{yg>Sck9DnPLKZn)wKG?6q&v26;EXE%l0VT
+zFTJ5L|KG{WX;ntN5p_e!e_v-6zJKRzv-&6nn^<lo6ZKlf<Jw9qjTgt?9j~saWi~1&
+z_so8`^=7#mCt<0a-kQikr^nyYa5iu3$a!Y3Xw1*|jozoz+w0x7dr}ZU009ILKmY**
+z5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0
+z009ILKmY**5cr=9tXsRV(e4WmcfPg<+jk0^+vjcL$9t!?benel^rOPYPcPVmqOA_=
+zg75b~+zVUVcV;#<H(R6o%Iky0=&lt{J)Bd0YS=a&z4y!JWKX~59RGV~=S6qwz3O`@
+zuGgDm^GS1YEbI1hzrm|}!ddCf*&X9(?+S9Hx|b+>?mhet^MGz7k92P(>#nhH>B~FU
+zo%g0vLjVB;5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{
+z1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009IL
+zKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~
+z0R#|0U{|0T?N+HEfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000Iag
+zfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_0z<(q#bjId}qUuV$8d~Xc
+zB~)sSYMj{Ir?zg1y%U8`TH$6Am(y6|Nv*LEmecuj8uU^Km2wgXJK>Fzt*#dIT+`Ev
+z3vn72o7Lrd92(`tINYAJV@bSFYo&3L52$a%S8CmW=MNRf`n6MA8>s%gHnPa<WVb$`
+u`dQW0{aDGabm~6K`V^&Z9<$E54mm?-;E;nH@i`B`gphSDCAHf!G5Z%m&<X+o
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/dependent-addon/a/prebuilds/watchos-arm64-simulator/a.bare b/test/fixtures/dependent-addon/a/prebuilds/watchos-arm64-simulator/a.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..d7688e74ab09b7c26230dc6a40afef1bf99eb5b8
+GIT binary patch
+literal 50072
+zcmeI*U1%It6bJCLlTEY57!yn}no8GLTC0+;g5;&`q)D*Vl9)EZyvTJnJ4seIyK#0>
+zleXZ3v?78g;K%BV1&gv6AC%x*aqB~ofR!NDU_okW!9ECuf|!yto-=c&Zoc~FL-c>?
+z**oXnJ16)4b`vHq=?}O5xLr;ZB5s>FsyO;eiB3|b4AFxeb3Ch5Pe)&mH?;i4T%MB7
+zxda6vE0l8WF;}kqwz6LCUVq%w^O76-+UvrUEl!onxTCSmouQTW=5#$io7W^St{2hu
+zf_cB58nTlkw!?R<tanw{+pg<LUR;k>?XN%MI*HVvUca(lq{5$w==mVm>GIk<sMKic
+z)kG?;5~+c-moI-mDs{aVbpgqj?N5&foxHC(4yD>#ds<anSLYG`-8J=!b@~#XmXHsO
+zd_t5OOc%Ya>(&d-Nv3~4-|98_%y}O^oy)#{=kWKX2c^sEYg6|t@?c-VnUzXfDl<MD
+zODENc>#SSv&c3*w)CgJ`Uj(&eOsTl#TEXn<{YA3=Tu@K);(Gtw>0ik?4{#`T=wRow
+z9qk8$@2!GAFHT-7_+3sH6RTn``B*;2QKQF841a}XHr2;0$L3+L)v;isTos69j}h+W
+zo}fhwe%``;9}mjeWj@Ebyho99L}T3F!|@!4v|ul?wJ=Aqm&_NpzY1%6)bb+vI??>4
+zJwwkoPQ7vJTyLoDN3&VRI5u;5J2oEjzMjVrx)6SxNBy5r-U5>E;}#C7<?rJV|M&?}
+z!)V57NG4(uN5(U*JzT%PK0eNwf8SPi5kI-#Os1{4?WhsU9cmE3=K9_KDk51IU2~nk
+zVh4A!pNWF+yG!TdC+%Slna{Fg&E246F&YFQ009U<00RF@0kbrFxKN@l^5G{a+A=BE
+zORv-H;_*;^v5h8wE2H@<kJ4l-uj2=ucQ2Qj^NYt@^Ss7e%g<;Nm4-P_#<q*yeBD$>
+zlQ*9JCf`^z&TDGsmzEw7;NWpbp6U2m$7{vCJhI5|WG43#!S7dcUEJjPtel^~syU=p
+z`;Uo|$Ri>e1Rwwb2tWV=5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z
+z1Rwwb2tWV=5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=
+z5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHaf
+zKmY;|*l+?1`v0}xa2v;lApijgKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb
+z2tWV=5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV={~>{@
+zI_j3=RGIPdWL#z3(U^)QQgPd%?pJ7n9NKHDmolo~u`SnDiIls$nTLr&iuTKmC6ue>
+zm(%hxRZC<H+O8T-$48U4N?F6UI@(ATjy;&jxV95a@YwxiSn+r|r7Sg&qRlbOu@%*D
+zu}Ha;jd4^&h$30ZxGcwgA)=iAdj%CbKdtkfI-k<H$vH2-&7Ifekeu^BzlFIg<&a)l
+zlvL4nl((HVPU26jahz2~t2mYNhDMykQI_<-D$%W9%L{zEEu05?tL8C2t`Q=GcV~D<
+zw|Kr!-@_+7myH_aIq9*xb!ISWnN9U_Fgo^r`1_kBSLzS<r_Hy&-M81tFPxgbyz9H0
+zpTBUvqkG$@U%WQ;RbTr2^?^e8=h@kpjjq1Zr4!R9j-CAF>{|!keDbr6KEG)sI};u|
+zyXB)DbI#XidZX=s=Fh~l*Sg-j&^f#P>JwZ4?el&4$jtQ22Os7>*>mZ}&d4+Sny)=I
+T-TTw{^_20>f^C1C;5Y1VGluW{
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/dependent-addon/a/prebuilds/watchos-arm64/a.bare b/test/fixtures/dependent-addon/a/prebuilds/watchos-arm64/a.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..c393c04367997a20989cfaf7cbcdcff7c896b7b7
+GIT binary patch
+literal 65928
+zcmeI(&ubiI7{KvoH;Gv>wh2V6tzd}ak0ME$BJ`q6Y=ag<H8zKyd^6jbrdu|<ab{8z
+zdRZui9uw%HN3Zz<dNzN7;-z?0K`4UYH9{JnXWp4~cauUdy?tN$yze~kyz|UEpV{;_
+zzx?;l(-D!1XnRFtOk;US<erS$l)R<!o1S%UY5v+$KGoZGdQ&NKEg@yt3g@zTBeNsl
+zj?@eMd@+dVLDf(Bez2_UQ|Hoby`CPf=&u(9{**pj-YoB~S1an3=Y2hQGj6WMiC)oP
+zZ$YoO_MRWa^6q+aWPjJwENQe>iuL{V*7SO7H9tt17in*8opf%!^+Tf-xkl?oJI{OH
+z$420<T=s)l-m|}Az8vhmKGbmT(%jOVyZH5$tN!hFiWNaI_T>XQZDBtc`-M2S((Zb#
+z&#hNJr@ckHzHIiJ%YS^ugzf8zhTm5)X~S-D928?;Uhb=WX6KrrOE*{R?WSAHlIPYt
+z+?Uqt-q*0+rmSUmbS?_B(2jiT-(PLl&zJQq@2=<1KI`o{ztnJU;qsNQ<}Y17{M#xt
+zf^x0T?-$cH6o>hO*R}sp<5V#}Q1vUq;M`O_OyYczc9SBVnLMfFzqy)Lv1`gUQREkN
+zT-Hf@c02#0=Jt+8D;3$$@imQaG^~|-vF9Ar==QSnJx#Aa&f|<OvisahKlwX-^y!mF
+zTi<QpUAXtxtj<knSY46RTKsf=zr04}=fSf&>;H$!7s$st<j)i6fkn~m@B4y=o%8!!
+z(EpYyGQFNA)6GWR;_7Ca#j8`FPeq%W`3v7xFLSl)gJwI7;>4|m+0AK#ot--GSBcoV
+ziDTFK74Pd{`+TVPwBN=@MQ*M%1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009IL
+zKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009L01%jc@x4Q%GvCePF
+zZe`n!5AMpZ`*$ik`xj;Vk73#S^Ih4V({=jc?1SHjgT4Jbb33{wU#s5&Z;e)iJ*mF)
+zcu|kfP0IGaU;MN)(>1SaPVF5WylM9?KcBU)U-jGBymgQHH@boUgjWX%tkV|c{j<)#
+z10Ip8jB8jM_n#wM;y)SAXXy|?009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{
+z1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009IL
+zKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~
+z0R#|0009ILKmY**5I_I{1Q2*Jfhc&fb*w@F0R#|0009ILKmY**5I_I{1Q0*~0R#|0
+z009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_Kd
+zmnSebDT`KpEQmInkxR4nx~n%@QJl!)_p&94d=|J{sk@%UVHUeaD?2}{(;^io^LF8&
+zbUGF7@8|sk?WMXBXKu9}tv6%W3Rh!ydqz$s@k%4j;-oyGb8kpBjG}hSh3-a6Uaf~o
+z?Bt9U6)RdB(Xp;^q9#(?)dOu+jgxv02{g2w(6GD~SSIp;hUMddWqz5aPkko&!)mVo
+rd>hnZNW(^J6XLq|<nlco^Em#*G0$|w>IkcI`P5p{xUHi8t|I>f@Am|{
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/dependent-addon/a/prebuilds/watchos-arm64_32/a.bare b/test/fixtures/dependent-addon/a/prebuilds/watchos-arm64_32/a.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2a2f8b8e3aea7917175e3d279fbccef780d9f25
+GIT binary patch
+literal 65892
+zcmeI(&ud&&6u|K_lZlNOZK4s2EwmO<>>^2%g0AGnHb^m4V*_?~`ljzS9huC;H!roJ
+zE(Sz#;Ua-7U8uW&xRknbpbK49y6Iowwoq}SLK@F`Kayz@>B^0KFLU2L@4j<?ywA)m
+z@14KzKO7dRRz&0ptD{!GtBHIjBjSBu+C_C?_R@mg^p|dNW9^`YW%XXwG`^8~l$U+u
+z0}=aVm#VjAsY$mCRXgcQy;I)q+d~kD*uKTv{yBz<Is92ZhhB@D%W;z3Kl&bXHuh!f
+z_qKlyd1N0~I%(2qEn1$Jz3;Ldhzwc3xBaDmKGl`h$BkB`jn>t+CGDN#Mj&$8`n~NR
+zXI(qRzl%?-s-Bx!n9;NEUbvWlBVFqZtQPHng<d^>#H#9IyYH(waJ+rp+4%mo{kPzA
+zc=5JpHDB9;vh*wntQKv#b~%q~Gt|!NQoY^O<uo~Pe73fYFUQzya>#0VuNsAE=)HN_
+zyN6mY_xH9OQ>5-RzW+C@s?MFi@XqYH^E<y~dlGnBMIsA5&udwpw!nWMN344PK=v=G
+zNEn<RuZKx&U2@XoCOxnWf0vrIo?n(@#r+v;FI%VY(Vu^1_ip^aTK|5YvihD?FXcYm
+z)93uR_wwA|EZg(;mZR3;>-_rq_%HWApH9C2<M+`&Klu5FDeF67HFNi0ZuP}%y=;!k
+zo!TjT=D(Y=ykx<c-vmXq#{XMqtor=<-sbG@Uy+HGPBPJK)V*F@?WFP2_*>)As@;hk
+z6Y08T_MdIG!zfO4IZUrjIOf#&v^~mlEbo9EkyotW_qAc``2X#-;@%x82q1s}0tg_0
+z00IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@
+z2q1s}0tg_000Id7Uj%}|?)$v~y=U*UCcVnK$J?LE-L0FI&8@St{>|;<x4wN&?#@`A
+z9rE4y`nKNMx;e9HIa#iqSza5d20u#m_`P|HPd_W`58nQ1bF#1Ba*q79z5RllmB)Sk
+z)UKcP_0r#F=ZS;e<Hmu-UV`kpd-3zi!*=?3tT=&eXOw+PAD$m=-c2P!009ILKmY**
+z5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0
+z009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{
+z1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0;ru>w)>*c1{F
+zKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~
+z0R#|0009ILKmY**5I_I{1Q0*~0R#|0;6D}^Jt^~}LA2V8w3DvXwccn&aU$~{$(khc
+zW}qK-^hy$kX{?P_Iz46GA{CWc-&ak#-HKhm$gUf9mFi-g>QXyeX~x<Lmtws>DTkAI
+zvC&E6q<mm~&r3CoqIOF|z1or|>tPbB9L-<WCLJ2Kux|C4AzP+r^ICk^=9j?wig?K4
+zSBrSeV*7}tJhVpU^Vmn&21N#o_JnBPx|*$fz?Sm|2kd*F$38mMtZO-GTsJje{~tE$
+B1|0wZ
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/dependent-addon/b/prebuilds/watchos-arm64-simulator/b.bare b/test/fixtures/dependent-addon/b/prebuilds/watchos-arm64-simulator/b.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..058e72b35bc141550114a509df5ef85abcb12b44
+GIT binary patch
+literal 50088
+zcmeI*Uu+ab90%~<?G-3epyf{}7GkA_pfUXeJfKmtR1g}Pwn!gJVlwV=+j4NdD|=g@
+zLa<SR2vOSv0~(`}5TQhTFc=$xa*feMD4IS<kpu#2j08y<C1^=X{rz@!>-7q}NqqPY
+z%+CB~W`8^T*)7TTh3{`&znw=EA}-^(PUG4>j%X+4%Mi`xdY)&Ms$bqv?+uMUn4?4T
+zV@^Rql@&_4_EuMVx@6}|7wGY7e_mq4?|V%SwP%J(rQFs?YGf!oU!L3umqOi;#F_bW
+z{d|1yUeWo~dOO}?J3Nw|?-4&=xxZfG%zQLvf9q1N6H7Gt>$CIK`}uPH`5^Yg(Ybk0
+zsn*1nSR$%oiN>TCkA5C6`1xM+6G%L2fBtyT$a6iwRjFl5>zAr$Yiri%r)&Bv?$U;N
+zTB^J-@`fnYl+1Xncg+{vCz<+uKGiGo&SmaX_VpWAy)SQxKD7IN({HolU|&HlrQ()K
+zwKYeQan<5Fcg?5Ya?Z*5Bu7vta3?cXDr&h_FgtdC`R#fxxKD{Q&;R#K-IM!V$yKT9
+zs+v{HmsM$fqO_hDC$FS+bHq<3?oxv?nL7)(%6l&3VMDKom=&cF%dvULEA#jcy>~ZF
+zBzw%|Hu%|)1;rf8d>yy4FL9Ll4>^`+RM<nbmD@>N>$pnMSJG=`d-u9u;`8O-gX~ho
+z19F}G1#g_$pYz0=6B}Z*Yw_vIg*;Zwbs|@9$Hs&D{v-^2m-84mBhQZe@^c(G$le17
+zE6YLFE#WHHlyyYaysZ$GwWgf1cq}4yO<T&fn@cN8qiq~{i)aq}Nq#xsj3=$A?Wh*Z
+zU0){93riR2RphNJzT-N*Vm>#r?*nQ593J&!ah5WdtIT(>SE1gZ45L5*0uX=z1Rwwb
+z2tWV=5D<Y5s+-uE4y$v+Us2zU+ECZfHlu6kRqFgROh>Owpuq=-_FdurPbJiOIXwL+
+ze^c$dJi#0s+E&?hqjqT*pXZ%lPBf5jn1f_Ibk6IK*Zm3}uc)NXffc8^_}gS;O&x!t
+z3=R*^l1)heCimsn5Wy#rd>`_6lUFiZ`K*!O@0i?54SrW6{mdfYlX?7=HiN4a{`QiT
+z@`an@4d4I)2tWV=5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb
+z2tWV=5P$##AOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##
+zAOHafKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHafK;S+K
+zJmvqt@hkoIK3*D^f&c^{009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHaf
+zKmY;|fB*y_009U<00Izz00bZa0SG_<0uX=z1Rwwb2tWV=5P$##AOHafK)@F$m`Be`
+zcbXY(i$_(;ZH=f%ED^OGTD^%n$e{vLS<z@Rp)A#ykdfSHOtm4U);YH2+A5ZC7cJ!B
+zpoCP!a%@F~G7zS82_Je(h>RxNRn5t0Yur`|tJzkY%V~;ZH^ow}?F17%HeDx5m*jb!
+z2p^~966Lq+af6$wA)<7Fj*I-b*N+!-%+vf=7n2(fZu=pv*0H4VN|=v1T*q+@`Z7^W
+z`abTkYdvv?t!Fxo5gNm*lsDAk#5S{|TvN)eOL=L=n#tYZ9%k?u@7D;C!8<kh50S;S
+zfvc3sL_HnF25B%ocCTY~Fc~o`O66gZd$#-A)pJ&y{qj)c;Hh-^=Ow+fs`l)-J?Wj#
+z+8Uj|2j1U!?2p}M{gWqud2jF2vu7SEdgZOD@iT4L{u<bB++1??#PMS<fBb1f@|&xT
+z>74$)zKuq0!?@w?$G5+<^THQ<SHAxE;s5*mp=+=G*l~Ez!-Ks)Y??ZM^QA2xTs(Nb
+zVdvMUcb|N7NB6E@|Lgs~-MZoDwfo<_-v3G0N0nDD)U2D^e<X4-S=6&??eE=HJ<st2
+F`v<y<1q}cI
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/dependent-addon/b/prebuilds/watchos-arm64/b.bare b/test/fixtures/dependent-addon/b/prebuilds/watchos-arm64/b.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec9d02686a589e5d7b880d943baae9de1186133d
+GIT binary patch
+literal 65936
+zcmeI)&ubiI7{Kvof3#UO#<UiUsbHueS|mwR58^>4u|<oaNo)?{<#o0@O;<L%ady%+
+z)I(5&9y}z_Lj@0lrxg4f40!UQcq#SPdh#L&EkcAOKF_=}VRw_BJ>>hsGw=Jn^Ugc(
+zd}cPcH^2V-*G|7kL9`szIIeN)h{#tmXkGH6#(h2O-2C~E=F_h3!)kXbS*}w^9yY?c
+zB)XAU%a?ug1-^eeJ1?3S^S0IHd}iP2Tsv8=w)aN#&Nm(SQ$yJZ%RA?*Wb^5>r^V0b
+zu11ZeDAu0d`D%e5H|{I3ymP+&>$}`e;(Bu-8{a$MZN1(~#aEK&S=v3fb~?A*yk2kC
+zT)lavmFC^=<J-Vr`H8Q@@~-t|{dr~Y^^S&f=O*VT-McdvFZs8-nvDpux+gDbw}pK$
+z_JugN(CT=tPn<7*PJ4@XeO~OF>s+U;>rV~8u6&f%n^`-^>YhAbS3Z|>jnK7M7OSm>
+zTT0?5&gZ{!om1!QTvwlVb>`01!X(trtn{vLaMPd2pVRWr>$A)DDtpfNHJqEiaPfol
+z=PvC1w$h)XNRSWp`C8U(Rn|-gJgdjoH0(RK{!-D8s0L?7t6>~zS6WVqtom=akbZL&
+z9i9I+Y`}=-c79fCTbDW7`R_EhcQjNe$PKNZ(U{e+;_u|g=KlW70Y|;w{vPy}liFeT
+zx&QkQrGcN{zW&V@AAdhLzH@p)`$ja%8Y07bli~D!scGSt@@ehedw1G?LnD2jKpPfW
+zvEO&@W6zZPggrhs?kx?Q!^VkB>v9V+w%m@#8uhBhrImIPEsjo&)>br22gyt7YV+Im
+zL8BGcqS!5k$<;A?0TZKV{U}MtjT|`6k9bupd!9Rb&x+QsXSw-P5I_I{1Q0*~0R#|0
+z009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**5I_I{
+z1Q0*~0R#?}z?#e!*EdV<-tJHG+vAzS#`ewP#`c%8{-`8(ANI-C(;~MYYWt5@Wc@+u
+z`MXbP{-7_|+P*op@pxu(L$6D(*L}fjgT-J=iZ9<w+edwSPW#VH$@<^#{kSpSJ!WWY
+zclQO;*6~CCXxsk(K)!X>cE0NV+O%}m>HgfnZ}Zhk^1c4n?ku)fxL<ekp2&9e>K<L2
+z(soGuZN;5~X(NCD0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}
+z0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*sr
+zAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_0
+z00IagfB*sr9BP5j1ONE9vieYC@bCyAfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@
+z2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0toz10>@6t
+zhj#1ZL2ac`bM0ig>Z<i-EsACCGg*^Zjs-5P)mlv#x+_iVsk{@oPuuQt9EC~b>doZr
+zgm&kp;HqI9IT^N&vaGHa^!T+NrMM6!Zn0HcZbYsbE=KO!xD3S6LcN_taehMkPS}-t
+zUBA^;je&~D;HG6diN<p}nFJbIPHI@*A6O>xriP|AA}xU)HQDi*$ehn@nzWSkSk^eA
+lk+<!{i1_C?V9ox-0SoVR+9$M+*SWN7DXw2rN4uw${{Wn;6@~x+
+
+literal 0
+HcmV?d00001
+
+diff --git a/test/fixtures/dependent-addon/b/prebuilds/watchos-arm64_32/b.bare b/test/fixtures/dependent-addon/b/prebuilds/watchos-arm64_32/b.bare
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d6f0854d4946cb0839563740875415c259dbf3a
+GIT binary patch
+literal 65896
+zcmeI)&ubiI7{Kvof3#gSHffC*+JbE;f+G3ZgQqg7EjAdM#^&Jdb+$82RyMnFcD8Lu
+z4+|oA=plg~6#NI${~#wL-ispioa$K-41z)$pJ!&LnIwBJ!uKW5yuaUh=QFd%H&6ck
+z{du2Au^=MHHBM{%R2KP42E^JP>czSFYoE?*C7(Loisr|(n1!`E7l-#_E2Zhkd{1P?
+zx->6Zo~5#MvZ8aXxLs{!)gybD@kEBS*Yf-tmF^n)OghKbaEoDmIgFC}!RH8c?wGb)
+zo?k-_?BjMTj%tks9cStAvpn)dD%x&&KIPYQuHCp-YXq*=xYN`@hu8Sd6ZuTrEzi%>
+zrWeWH#RCoJu1?KQxesS=+)Cd_M;kqjZeG%&g^eH3aBiWQdlfzB>+4SD=kIObLRPo6
+zwlvavYavTpTJSWwd3Nt?o^y5IwN{p@&AMBTqn`84&gN%xta?Jj*0SVW;KzPiPV4sk
+z`}N9J>Th{|jr|d+#RuBp+|2ZikFQ;we(^2qlX*6>Ad6bmza*^1((4)*HS9aHzEbil
+zDM-~DAF29Ls7*4ga`p|`2y-lJZsW6bPV4V$<+|qAHMc!l|2JAU;~mZI{k*1eQ^QiW
+z4;!1ACLKL4+dA5Qdxz6mZLs^?|K+#wd()RMJi560?VCURF+8Dd=QWadZeMQkOme@(
+zyYQs^p7z;ylcft<7_^Gl4bAMgmANE)?7H|l7aMa)!}eff^p~pJEXZiP6^+(wRf}6I
+ztvFm7xiS*0XiemtTH3lc*Q+=EAdK9yA1{s?_{7Mhtzu&|dW;cyN84@hYkD91uHNm|
+z&6<P&0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000Iag
+zfB*srAb<b@2q1s}0tg_000IagfWZGmU`=io*SAXU>E4g>^UiExV|TT<vHPX0|5cL5
+z&-!KaRXyJROv}Gc%KCQcjmNKOeY@Y=++Dr0u`@fhq4SdYdVYCrpy+K%@$IKc`FL8M
+z)AsRUS^x8+?>EK{jv4xAZ|^O0((yxoYuWz)Kz7{MPVL%RUrYHsIZy2EA4#_V0bt2X
+zuKO1|)7+=0j|Vj@>A7NC(oQR<$Dfl{E(joi00IagfB*srAb<b@2q1s}0tg_000Iag
+zfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}
+z0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*sr
+zAb<b@2q1s}0tg_000IagfB*srAb<b@2#7rJM84J_A%Fk^2q1s}0tg_000IagfB*sr
+zAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_000IagfB*srAb<b@2q1s}0tg_0
+z00IagfWXTWI5jMvoc4m1df-}dyXva7Mi53a_l2xUB&R&*2SKype0Qf|E#=Fe`@H3D
+zN1-2wuGWYrC$!m8!BzbzbaKWjW$APZdVQ!@DK3PuTWSXFdgvPdQt0lE$;l{OsI}rS
+z$~v@d&}QnqKFg~bCo3YAEnPs%{ko8NB4@khJ}qC;vNl_fby?xLmFLp3O_P#FS>sr)
+gd|uMM_Sje2(PMLYha&<<_?%0cmZRETb<$hQe=Wrn5&!@I
+
+literal 0
+HcmV?d00001
+

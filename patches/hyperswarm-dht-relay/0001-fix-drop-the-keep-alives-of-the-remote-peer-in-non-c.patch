@@ -1,0 +1,57 @@
+From 2f6ea93e4c73d103d452432a6b261ade43c09740 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 15:07:31 +0700
+Subject: [PATCH 1/4] fix: drop the keep-alives of the remote peer in
+ non-custodial mode
+
+---
+ lib/node.js         |  3 ++-
+ test/connection.mjs | 21 +++++++++++++++++++++
+ 2 files changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/lib/node.js b/lib/node.js
+index 9ee8ef9..c439666 100644
+--- a/lib/node.js
++++ b/lib/node.js
+@@ -128,7 +128,8 @@ class Node extends EventEmitter {
+     const encryptedStream = new SecretStream(true, null, {
+       publicKey: keyPair.publicKey,
+       remotePublicKey,
+-      autoStart: false
++      autoStart: false,
++      filterZeroByteMessages: true // The keep-alives of the remote peer
+     })
+ 
+     encryptedStream
+diff --git a/test/connection.mjs b/test/connection.mjs
+index 151cb73..bc1f968 100644
+--- a/test/connection.mjs
++++ b/test/connection.mjs
+@@ -86,6 +86,27 @@ test('server mode', (t) =>
+   }))))
+ )
+ 
++test('client mode, keep-alive of the server', (t) =>
++  withDHT((a) => withRelay(a, (withDHT) => withMatrix({ custodial: [true, false] }, (options) => withDHT(options, async (b) => {
++    t.comment(`custodial = ${options.custodial}`)
++
++    const io = t.test('read')
++    io.plan(1)
++
++    const server = a.createServer((socket) => {
++      socket.setKeepAlive(50)
++      setTimeout(() => socket.end('pong'), 500)
++    })
++    await server.listen()
++
++    b.connect(server.publicKey)
++      .once('data', (data) => io.alike(data.toString(), 'pong'))
++      .on('end', function () { this.end() })
++
++    await io.then(() => server.close())
++  }))))
++)
++
+ test('connect to nonexisting key', (t) =>
+   withDHT((a) => withRelay(a, (withDHT) => withDHT(async (b) => {
+     const e = t.test('error')

@@ -1,0 +1,63 @@
+From 1474d8102d0eacad5f59411548e64a0b1a7bec36 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 14:49:56 +0700
+Subject: [PATCH 1/2] feat: let a session join as a client only
+
+---
+ lib/session.js  | 16 ++++++++++++----
+ test/session.js |  8 ++++++++
+ 2 files changed, 20 insertions(+), 4 deletions(-)
+
+diff --git a/lib/session.js b/lib/session.js
+index 6385647..90f6046 100644
+--- a/lib/session.js
++++ b/lib/session.js
+@@ -15,9 +15,17 @@ const ROOM = 'bare-macos-switch'
+ const TOPIC = Buffer.alloc(32).fill(ROOM)
+ 
+ module.exports = exports = class Session {
+-  // `swarm` exists so the wiring below can be tested without a network; leave it
+-  // out and a real Hyperswarm node is created.
+-  constructor({ onState = () => {}, onPeers = () => {}, swarm = new Hyperswarm() } = {}) {
++  // `swarm` lets a host bring its own node (or a test run without a network);
++  // leave it out and a real Hyperswarm node is created. `server` and `client`
++  // are how it joins the topic: a host that can't accept connections, such as
++  // one on a DHT reached through a relay, joins as a client only.
++  constructor({
++    onState = () => {},
++    onPeers = () => {},
++    swarm = new Hyperswarm(),
++    server = true,
++    client = true
++  } = {}) {
+     this._swarm = swarm
+     this._peers = new Set()
+     this._onPeers = onPeers
+@@ -54,7 +62,7 @@ module.exports = exports = class Session {
+       })
+     })
+ 
+-    this._swarm.join(TOPIC, { server: true, client: true })
++    this._swarm.join(TOPIC, { server, client })
+   }
+ 
+   get on() {
+diff --git a/test/session.js b/test/session.js
+index 8712293..7f7e74a 100644
+--- a/test/session.js
++++ b/test/session.js
+@@ -58,6 +58,14 @@ test('joins the shared topic as both server and client', (t) => {
+   t.alike(swarm.joined[0].opts, { server: true, client: true })
+ })
+ 
++test('joins as a client only when asked', (t) => {
++  const swarm = new FakeSwarm()
++
++  new Session({ swarm, server: false })
++
++  t.alike(swarm.joined[0].opts, { server: false, client: true })
++})
++
+ test('a new peer is counted and sent the current state', (t) => {
+   const peers = []
+   const swarm = new FakeSwarm()

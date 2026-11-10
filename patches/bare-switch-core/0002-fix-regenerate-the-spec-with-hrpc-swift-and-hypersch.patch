@@ -1,0 +1,165 @@
+From 61fd18c37d7ceb7542fc0562b2e4e9fe382f0899 Mon Sep 17 00:00:00 2001
+From: Daniel de Souza Neris <danielneris01@gmail.com>
+Date: Sat, 7 Nov 2026 15:16:37 +0700
+Subject: [PATCH 2/2] fix: regenerate the spec with hrpc-swift and
+ hyperschema-swift 1.0
+
+The Swift packages of the spec asked for bare-rpc-swift and compact-encoding-swift at `main`,
+where bare-rpc-swift 2.0.0 no longer has the `RPCDelegate` the generated `HRPC` is built on.
+The 1.0 generators ask for both `from: "1.0.0"`. The JavaScript and C files are regenerated
+by the current hrpc, hrpc-c and hyperschema-c.
+---
+ package.json              | 4 ++--
+ spec/hrpc/Package.swift   | 2 +-
+ spec/hrpc/hrpc.h          | 9 +++++++++
+ spec/hrpc/index.js        | 6 +++---
+ spec/hrpc/sync_hrpc.h     | 8 ++++++++
+ spec/schema/Package.swift | 2 +-
+ spec/schema/sync_schema.h | 8 ++++++++
+ 7 files changed, 32 insertions(+), 7 deletions(-)
+
+diff --git a/package.json b/package.json
+index fdc0e9b..4d50a66 100644
+--- a/package.json
++++ b/package.json
+@@ -28,9 +28,9 @@
+   "devDependencies": {
+     "brittle": "^4.0.2",
+     "hrpc-c": "^0.1.0",
+-    "hrpc-swift": "^0.2.0",
++    "hrpc-swift": "^1.0.0",
+     "hyperschema-c": "^0.4.0",
+-    "hyperschema-swift": "^0.3.0",
++    "hyperschema-swift": "^1.0.0",
+     "lunte": "^1.8.0",
+     "prettier": "^3.4.2",
+     "prettier-config-holepunch": "^2.0.0"
+diff --git a/spec/hrpc/Package.swift b/spec/hrpc/Package.swift
+index 2b360d3..2741c1c 100644
+--- a/spec/hrpc/Package.swift
++++ b/spec/hrpc/Package.swift
+@@ -8,7 +8,7 @@ let package = Package(
+     .library(name: "HRPC", targets: ["HRPC"])
+   ],
+   dependencies: [
+-    .package(url: "https://github.com/holepunchto/bare-rpc-swift", branch: "main"),
++    .package(url: "https://github.com/holepunchto/bare-rpc-swift", from: "1.0.0"),
+     .package(path: "../schema")
+   ],
+   targets: [
+diff --git a/spec/hrpc/hrpc.h b/spec/hrpc/hrpc.h
+index e7398cd..7e1d785 100644
+--- a/spec/hrpc/hrpc.h
++++ b/spec/hrpc/hrpc.h
+@@ -9,11 +9,16 @@
+ 
+ #include "utf/string.h"
+ 
++#ifdef __cplusplus
++extern "C" {
++#endif
++
+ // Error reply / error stream-frame payload. On decode the views point
+ // into the inbound frame; copy out anything kept past the read loop.
+ typedef struct {
+   utf8_string_view_t message;
+   utf8_string_view_t code;
++  // canonical wire errno; named status (errno is a reserved C macro)
+   int64_t status;
+ } hrpc_error_t;
+ 
+@@ -37,4 +42,8 @@ enum {
+   hrpc_err_unknown = -3,
+ };
+ 
++#ifdef __cplusplus
++}
++#endif
++
+ #endif // HRPC_H
+diff --git a/spec/hrpc/index.js b/spec/hrpc/index.js
+index 02803e7..d26aa9b 100644
+--- a/spec/hrpc/index.js
++++ b/spec/hrpc/index.js
+@@ -34,17 +34,17 @@ class HRPC {
+       const responseEncoding = this._responseEncodings.get(command)
+       const requestEncoding = this._requestEncodings.get(command)
+       if (this._requestIsSend(command)) {
+-        const request = req.data ? c.decode(requestEncoding, req.data) : null
++        const request = req.data && req.data.byteLength > 0 ? c.decode(requestEncoding, req.data) : null
+         await this._handlers[command](request)
+         return
+       }
+       if (!this._requestIsStream(command) && !this._responseIsStream(command)) {
+-        const request = req.data ? c.decode(requestEncoding, req.data) : null
++        const request = req.data && req.data.byteLength > 0 ? c.decode(requestEncoding, req.data) : null
+         const response = await this._handlers[command](request)
+         req.reply(c.encode(responseEncoding, response))
+       }
+       if (!this._requestIsStream(command) && this._responseIsStream(command)) {
+-        const request = req.data ? c.decode(requestEncoding, req.data) : null
++        const request = req.data && req.data.byteLength > 0 ? c.decode(requestEncoding, req.data) : null
+         const responseStream = new RPCStream(
+           null,
+           null,
+diff --git a/spec/hrpc/sync_hrpc.h b/spec/hrpc/sync_hrpc.h
+index 5219a49..61302d7 100644
+--- a/spec/hrpc/sync_hrpc.h
++++ b/spec/hrpc/sync_hrpc.h
+@@ -9,6 +9,10 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ 
++#ifdef __cplusplus
++extern "C" {
++#endif
++
+ enum {
+   sync_command_set_state = 0,
+   sync_command_new_state = 1,
+@@ -62,4 +66,8 @@ typedef struct {
+ int
+ sync_hrpc_dispatch (const sync_hrpc_handlers_t *handlers, const rpc_message_t *msg, uint8_t **reply_out, size_t *reply_len);
+ 
++#ifdef __cplusplus
++}
++#endif
++
+ #endif // SYNC_HRPC_H
+diff --git a/spec/schema/Package.swift b/spec/schema/Package.swift
+index 0d72995..26feb75 100644
+--- a/spec/schema/Package.swift
++++ b/spec/schema/Package.swift
+@@ -8,7 +8,7 @@ let package = Package(
+     .library(name: "Schema", targets: ["Schema"])
+   ],
+   dependencies: [
+-    .package(url: "https://github.com/holepunchto/compact-encoding-swift", branch: "main")
++    .package(url: "https://github.com/holepunchto/compact-encoding-swift", from: "1.0.0")
+   ],
+   targets: [
+     .target(
+diff --git a/spec/schema/sync_schema.h b/spec/schema/sync_schema.h
+index bf69cad..d1f1a85 100644
+--- a/spec/schema/sync_schema.h
++++ b/spec/schema/sync_schema.h
+@@ -8,6 +8,10 @@
+ #include <compact.h>
+ #include <stdbool.h>
+ 
++#ifdef __cplusplus
++extern "C" {
++#endif
++
+ // @sync/switch-state
+ typedef struct sync_switch_state_s {
+   bool on;
+@@ -60,4 +64,8 @@ sync_peers_decode (compact_state_t *state, sync_peers_t *result);
+ void
+ sync_peers_destroy (sync_peers_t *result);
+ 
++#ifdef __cplusplus
++}
++#endif
++
+ #endif // SYNC_SCHEMA_H
