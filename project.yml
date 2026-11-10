@@ -1,0 +1,48 @@
+name: App
+include:
+  - app/addons/addons.yml
+packages:
+  BareKit:
+    path: ../forks/bare-kit-swift
+targets:
+  App:
+    type: application
+    platform: watchOS
+    deploymentTarget: 10.0
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ciranda.bare.watchos
+        SWIFT_VERSION: 5.0
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks
+        # Bare Kit has no x64 simulator slice for watchOS.
+        EXCLUDED_ARCHS[sdk=watchsimulator*]: x86_64
+    info:
+      path: app/Info.plist
+      properties:
+        CFBundleDisplayName: Bare
+        WKApplication: true
+        WKWatchOnly: true
+    dependencies:
+      - package: BareKit
+    sources:
+      - path: app/App.swift
+      - path: app/Model.swift
+      - path: app/ContentView.swift
+      - path: app/app.bundle
+        optional: true
+    scheme:
+      preActions:
+        - name: Link
+          script: |
+            PATH="${PATH}" "${PWD}/node_modules/.bin/bare-link" \
+              --preset watchos \
+              --out ${PWD}/app/addons \
+              ${PWD}/app/app.js
+        - name: Pack
+          script: |
+            PATH="${PATH}" "${PWD}/node_modules/.bin/bare-pack" \
+              --preset watchos \
+              --linked \
+              --base ${PWD} \
+              --out ${PWD}/app/app.bundle \
+              ${PWD}/app/app.js
