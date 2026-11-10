@@ -28,7 +28,7 @@ BARE_KIT_LOCAL=1 xcodebuild -scheme App -destination 'generic/platform=watchOS' 
 
 ## Running
 
-Start the relay and a peer on the computer, then the app in the simulator:
+Start the relay (after `npm install` in `../dht-relay-http`) and a peer on the computer, then the app in the simulator:
 
 ```sh
 node ../dht-relay-http/bin.js --host 127.0.0.1
