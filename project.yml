@@ -4,6 +4,18 @@ include:
 packages:
   BareKit:
     path: ../forks/bare-kit-swift
+  # The last releases before macOS 13 and iOS 15, as the spec's packages are generated for macOS 11 and
+  # iOS 14, which is watchOS 7 to Swift Package Manager.
+  BareRPC:
+    url: https://github.com/holepunchto/bare-rpc-swift
+    exactVersion: 1.1.0
+  CompactEncoding:
+    url: https://github.com/holepunchto/compact-encoding-swift
+    exactVersion: 1.0.0
+  Schema:
+    path: node_modules/bare-switch-core/spec/schema
+  HRPC:
+    path: node_modules/bare-switch-core/spec/hrpc
 targets:
   App:
     type: application
@@ -14,6 +26,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.ciranda.bare.watchos
         SWIFT_VERSION: 5.0
         LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks
+        # The relay the worklet reaches the DHT through. A release build needs it over https.
+        RELAY_URL: http://localhost:49443
         # Bare Kit has no x64 simulator slice for watchOS.
         EXCLUDED_ARCHS[sdk=watchsimulator*]: x86_64
     info:
@@ -22,11 +36,19 @@ targets:
         CFBundleDisplayName: Bare
         WKApplication: true
         WKWatchOnly: true
+        RelayURL: $(RELAY_URL)
+        # Plain http to a relay on this computer, for a debug run.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     dependencies:
       - package: BareKit
+      - package: BareRPC
+      - package: Schema
+      - package: HRPC
     sources:
       - path: app/App.swift
-      - path: app/Model.swift
+      - path: app/BareTransport.swift
+      - path: app/SyncModel.swift
       - path: app/ContentView.swift
       - path: app/app.bundle
         optional: true

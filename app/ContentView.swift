@@ -1,28 +1,23 @@
 import SwiftUI
 
 struct ContentView: View {
-  @ObservedObject var model: Model
+  @ObservedObject var model: SyncModel
 
   var body: some View {
     VStack(spacing: 8) {
       Text("Bare <-> watchOS")
         .font(.headline)
 
-      if let reply = model.reply {
-        Text("\(reply.platform)-\(reply.arch)")
-          .font(.footnote)
-          .foregroundColor(.secondary)
+      Toggle("Switch", isOn: Binding(get: { model.on }, set: { model.setOn($0) }))
 
-        Button("\(reply.count)") { model.increment() }
-          .font(.title2)
-          .monospacedDigit()
+      Text("Peers: \(model.peers)")
+        .font(.footnote)
+        .monospacedDigit()
+        .foregroundColor(.secondary)
 
-        Text(reply.hash.prefix(16))
-          .font(.system(.caption2, design: .monospaced))
-          .foregroundColor(.secondary)
-      } else {
-        ProgressView()
-      }
+      Text(model.publicKey)
+        .font(.system(.caption2, design: .monospaced))
+        .foregroundColor(.secondary)
     }
   }
 }

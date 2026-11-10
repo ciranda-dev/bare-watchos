@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct App: SwiftUI.App {
-  @StateObject private var model = Model()
+  @StateObject private var model = SyncModel()
 
   @Environment(\.scenePhase) private var scenePhase
 
