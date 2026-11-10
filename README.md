@@ -4,6 +4,9 @@ A peer-to-peer **shared switch** for watchOS - the watch shell over [bare-switch
 
 A watch gives an app no sockets, only `URLSession`, so the worklet reaches the DHT through a relay over plain HTTP: [`@hyperswarm/dht-relay`](https://github.com/holepunchto/hyperswarm-dht-relay) over [`@ciranda/dht-relay-http`](https://github.com/ciranda-dev/dht-relay-http), with `URLSession` from [bare-foundation](https://github.com/holepunchto/bare-foundation). The relay never holds a key (`custodial: false`): Noise runs end to end between the watch and its peers, and the relay forwards ciphertext. A relayed node can connect to peers but not accept them, so the watch joins the topic as a client and finds the peers that announce it, such as bare-ios, bare-macos or `peer.js`. When the relay goes away, the watch joins again through it every 5 seconds.
 
+> [!NOTE]
+> `@hyperswarm/dht-relay` was archived by Holepunch on 2026-10-15 and is marked experimental. The four fixes this carries for it in [`patches/hyperswarm-dht-relay`](patches/hyperswarm-dht-relay) have no upstream to go to while it stays archived.
+
 ## Building
 
 ```sh
