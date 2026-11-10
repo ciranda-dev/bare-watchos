@@ -13,14 +13,14 @@ Measured on 2026-11-07 on one Mac, in the simulator, and on 2026-11-10 on a real
   8f10631, which builds QuickJS-NG 0.18.0 with its 11 patches; and the commits the other patched repositories start
   from.
 - The worklet: hyperswarm 4.17.2, hyperdht 6.36.0, `@hyperswarm/dht-relay` at 5036c4b with its patches,
-  `@ciranda/dht-relay-http` at b9b1610, bare-switch-core 1.3.0 and bare-foundation 0.1.1 with their patches,
+  `@ciranda/dht-relay-http` at c3153bb, bare-switch-core 1.3.0 and bare-foundation 0.1.1 with their patches,
   sodium-native 5.2.0, udx-native 1.22.1, hrpc 4.3.1. The `overrides` in `package.json` give `@hyperswarm/dht-relay`
   sodium-universal 5 and noise-handshake 4.2, so the app links one sodium-native, 5.2.0, instead of 5.2.0 and 4.3.3.
 - The app: bare-rpc-swift 1.1.0 and compact-encoding-swift 1.0.0, pinned in `project.yml` (see below).
 
 ## A clean clone
 
-This repository at 80aaad0 and `dht-relay-http` at b9b1610, each cloned into a new temporary directory, side by side:
+This repository at 060be1f and `dht-relay-http` at c3153bb, each cloned into a new temporary directory, side by side:
 
 ```sh
 ./build.sh    # sources deps barekit addons app: exit 0, 488 s
@@ -176,24 +176,24 @@ Run on 2026-11-10, once, by hand.
 
 - Apple Watch SE (Watch6,10), watchOS 26.6 (23U67), paired with an iPhone 13 on iOS 26.6.1; the Mac and Xcode above.
 - The app built for the device in Debug, `arm64_32` only, signed with an Apple Development certificate, with
-  `RELAY_URL` set to an ngrok free tunnel (HTTPS, US region) in front of `../dht-relay-http/bin.js --host 127.0.0.1
-  --behind-proxy` on the Mac. `peer.js` ran on the same Mac, on the DHT directly.
+  `RELAY_URL` set to an ngrok free tunnel (HTTPS, US region) in front of the relay on the Mac,
+  `dht-relay-http --host 127.0.0.1 --behind-proxy`. `peer.js` ran on the same Mac, on the DHT directly.
 - Installed with `xcrun devicectl device install app`. It failed with `0xE8000003` ("Could not allocate a resource")
   while Xcode copied the watch's shared cache symbols, the first time it met watchOS 26.6, and after that until
   `CoreDeviceService` was restarted.
 
 What happened:
 
-| time | where | what |
-|---|---|---|
-| 20:12:31 | watch | the app launched |
-| seconds after | relay | `Session opened (1)`: the worklet reached the relay through URLSession over HTTPS |
-| before 20:12:52 | Mac | `peers - 1`, `state - false`: the watch (key `89567d85`) and `peer.js` (`ecd67d25`) connected through the relay |
-| 20:12:52 | Mac | flipped on in `peer.js`; the watch showed the switch on, `peers 1` |
-| about 20:14:45 | relay, Mac | `Session closed (0)`, `peers - 0`: the app left the screen (the watch was turned off or its screen slept; not told apart) |
-| 20:15:49 | watch | the app launched again with `devicectl` |
-| by 20:16:09 | Mac | `peers - 1` |
-| 20:16 to 20:17 | watch, Mac | flipped off on the watch: `state - false` on the Mac; on again: `state - true` |
+| time            | where      | what                                                                                                                      |
+| --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 20:12:31        | watch      | the app launched                                                                                                          |
+| seconds after   | relay      | `Session opened (1)`: the worklet reached the relay through URLSession over HTTPS                                         |
+| before 20:12:52 | Mac        | `peers - 1`, `state - false`: the watch (key `89567d85`) and `peer.js` (`ecd67d25`) connected through the relay           |
+| 20:12:52        | Mac        | flipped on in `peer.js`; the watch showed the switch on, `peers 1`                                                        |
+| about 20:14:45  | relay, Mac | `Session closed (0)`, `peers - 0`: the app left the screen (the watch was turned off or its screen slept; not told apart) |
+| 20:15:49        | watch      | the app launched again with `devicectl`                                                                                   |
+| by 20:16:09     | Mac        | `peers - 1`                                                                                                               |
+| 20:16 to 20:17  | watch, Mac | flipped off on the watch: `state - false` on the Mac; on again: `state - true`                                            |
 
 So on a real watch: Bare and QuickJS-NG run as `arm64_32`, the addon frameworks load from a signed install, URLSession
 reaches the relay over HTTPS, and Noise runs end to end through it both ways. Not measured: latency, memory, battery,

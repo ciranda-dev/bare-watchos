@@ -13,7 +13,7 @@ A watch gives an app no sockets, only `URLSession`, so the worklet reaches the D
 ./build.sh
 ```
 
-It fetches the repositories the app builds from into `vendor/`, each at the commit it pins, applies [`patches/`](patches), builds Bare Kit for watchOS from them with QuickJS-NG, installs the npm dependencies with the patched packages over them, adds watchOS prebuilds to the addons the worklet loads, and builds the app for the watchOS simulator and, unsigned, for watchOS devices. `@ciranda/dht-relay-http` comes from a checkout of it next to this one, `../dht-relay-http`, until it is published.
+It fetches the repositories the app builds from into `vendor/`, each at the commit it pins, applies [`patches/`](patches), builds Bare Kit for watchOS from them with QuickJS-NG, installs the npm dependencies with the patched packages over them, adds watchOS prebuilds to the addons the worklet loads, and builds the app for the watchOS simulator and, unsigned, for watchOS devices.
 
 Then build again or open it in Xcode, launched from a shell with `BARE_KIT_LOCAL=1` set, which makes bare-kit-swift use the `BareKit.xcframework` that `./build.sh` puts in `vendor/bare-kit-swift`:
 
@@ -31,10 +31,10 @@ BARE_KIT_LOCAL=1 xcodebuild -scheme App -destination 'generic/platform=watchOS' 
 
 ## Running
 
-Start the relay (after `npm install` in `../dht-relay-http`) and a peer on the computer, then the app in the simulator:
+Start the relay, the CLI of [`@ciranda/dht-relay-http`](https://github.com/ciranda-dev/dht-relay-http), and a peer on the computer, then the app in the simulator:
 
 ```sh
-node ../dht-relay-http/bin.js --host 127.0.0.1
+npx dht-relay-http --host 127.0.0.1
 node peer.js
 ```
 
