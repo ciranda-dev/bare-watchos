@@ -1,6 +1,7 @@
 # Results
 
-Measured on 2026-11-07 on one Mac. Nothing here ran on a real Apple Watch.
+Measured on 2026-11-07 on one Mac, in the simulator, and on 2026-11-10 on a real Apple Watch, once (see
+[On a real watch](#on-a-real-watch)).
 
 - Mac17,2 (Apple M5), macOS 26.7.1 (25G241).
 - Xcode 26.2 (17C52): watchOS and watchOS Simulator SDKs 26.2, simulator runtime watchOS 26.2 (23S303), simulator
@@ -169,14 +170,41 @@ supports 7.0`. `project.yml` pins the last releases before that.
   from the worklet, and the process answered neither `footprint`, `sample` nor `simctl terminate`. It didn't happen
   again on a freshly booted simulator. The cause wasn't found.
 
+## On a real watch
+
+Run on 2026-11-10, once, by hand.
+
+- Apple Watch SE (Watch6,10), watchOS 26.6 (23U67), paired with an iPhone 13 on iOS 26.6.1; the Mac and Xcode above.
+- The app built for the device in Debug, `arm64_32` only, signed with an Apple Development certificate, with
+  `RELAY_URL` set to an ngrok free tunnel (HTTPS, US region) in front of `../dht-relay-http/bin.js --host 127.0.0.1
+  --behind-proxy` on the Mac. `peer.js` ran on the same Mac, on the DHT directly.
+- Installed with `xcrun devicectl device install app`. It failed with `0xE8000003` ("Could not allocate a resource")
+  while Xcode copied the watch's shared cache symbols, the first time it met watchOS 26.6, and after that until
+  `CoreDeviceService` was restarted.
+
+What happened:
+
+| time | where | what |
+|---|---|---|
+| 20:12:31 | watch | the app launched |
+| seconds after | relay | `Session opened (1)`: the worklet reached the relay through URLSession over HTTPS |
+| before 20:12:52 | Mac | `peers - 1`, `state - false`: the watch (key `89567d85`) and `peer.js` (`ecd67d25`) connected through the relay |
+| 20:12:52 | Mac | flipped on in `peer.js`; the watch showed the switch on, `peers 1` |
+| about 20:14:45 | relay, Mac | `Session closed (0)`, `peers - 0`: the app left the screen (the watch was turned off or its screen slept; not told apart) |
+| 20:15:49 | watch | the app launched again with `devicectl` |
+| by 20:16:09 | Mac | `peers - 1` |
+| 20:16 to 20:17 | watch, Mac | flipped off on the watch: `state - false` on the Mac; on again: `state - true` |
+
+So on a real watch: Bare and QuickJS-NG run as `arm64_32`, the addon frameworks load from a signed install, URLSession
+reaches the relay over HTTPS, and Noise runs end to end through it both ways. Not measured: latency, memory, battery,
+which radio carried the long polls (the watch's Wi-Fi or the phone), and a run longer than a few minutes.
+
 ## What only a real watch can prove
 
-- The network: a watch allows only URLSession's HTTP tasks (TN3135), and it needs the relay over HTTPS. The simulator
-  allows sockets, so the runs above show that the worklet opened none, not that a watch lets URLSession reach the
-  relay, nor how a watch's radios, Wi-Fi or the paired phone carry the long polls.
-- arm64_32 execution: the simulator runs arm64 only, so QuickJS-NG, Bare and the addons have not run with 32-bit
-  pointers anywhere.
-- Memory: the simulator sets no limit, and its numbers are a Mac process's.
-- Loading addon frameworks linked with `-undefined dynamic_lookup` on a device, and an install signed for one.
-- Lifecycle: what watchOS does to a suspended worklet that holds no background task, and to its long poll; the relay
-  closes a session after 60 s without a request.
+What [On a real watch](#on-a-real-watch) showed is no longer here. Still open:
+
+- The network beyond one run: how a watch's radios, its Wi-Fi or the paired phone carry the long polls, their latency
+  and their cost in battery.
+- Memory: the simulator sets no limit, its numbers are a Mac process's, and none were taken on the watch.
+- Lifecycle: the session closed when the app left the screen, as expected for a worklet that holds no background
+  task; what watchOS allows beyond that is untested. The relay closes a session after 60 s without a request.
